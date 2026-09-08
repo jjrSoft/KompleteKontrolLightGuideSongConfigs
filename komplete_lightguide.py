@@ -66,16 +66,21 @@ class ColorTable:
 class LightGuide:
     hid_device = None
 
-    def __init__(self, filename):
+    def __init__(self, song_colors_file):
+        self.song_colors_file = song_colors_file
+        self.colorTable = ColorTable(colorsYaml)
 
-        with open(filename, "r") as f:
-            self.songColors = yaml.safe_load(f)
+        self.songColorsByPC, self.songLookup = None, None
+        self.load_defs()
     
         if dbg: print(self.songColors)
 
-        self.colorTable = ColorTable(colorsYaml)
-        self.songColorsByPC, self.songLookup = self.create_lookup_tables(self.songColors)
         self.connect()
+
+    def load_defs(self):
+        with open(self.song_colors_file, "r") as f:
+            self.songColors = yaml.safe_load(f)
+        self.songColorsByPC, self.songLookup = self.create_lookup_tables(self.songColors)
 
     def create_lookup_tables(self, songColors):
         preset_lookup = {}
@@ -207,23 +212,23 @@ class LightGuide:
 
         return colors
 
-    def print_color_map(self, colors, numkeys):
-        for octave_start in range(0, numkeys, 12):
-            octave = []
-            for key in range(octave_start, min(octave_start + 12, numkeys)):
+    # def print_color_map(self, colors, numkeys):
+    #     for octave_start in range(0, numkeys, 12):
+    #         octave = []
+    #         for key in range(octave_start, min(octave_start + 12, numkeys)):
 
-                pos = key * 3
+    #             pos = key * 3
 
-                octave.append(
-                    f"{colors[pos]:02X}"
-                    f"{colors[pos+1]:02X}"
-                    f"{colors[pos+2]:02X}"
-                )
+    #             octave.append(
+    #                 f"{colors[pos]:02X}"
+    #                 f"{colors[pos+1]:02X}"
+    #                 f"{colors[pos+2]:02X}"
+    #             )
 
-            if dbg: print(
-                f"{octave_start:02d}-{octave_start+len(octave)-1:02d}: "
-                + " ".join(octave)
-            )
+    #         if dbg: print(
+    #             f"{octave_start:02d}-{octave_start+len(octave)-1:02d}: "
+    #             + " ".join(octave)
+    #         )
 
     def send_colors(self, bankMsb, bankLsb, PC):
         if dbg: print(f"send_colors({bankMsb}, {bankLsb}, {PC})")
@@ -231,8 +236,9 @@ class LightGuide:
 
 class MidiMonitor:
     port_name = "IAC Driver KompleteLightGuide"
-    bank_msb = 0
-    bank_lsb = 0
+    bank_msb = None
+    bank_lsb = None
+    pc = None
 
     def __init__(self, lightGuide, setSongCallback):
         self.lightGuide = lightGuide
@@ -247,10 +253,17 @@ class MidiMonitor:
             elif msg.control == 32:
                 self.bank_lsb = msg.value
         elif msg.type == "program_change":
+            self.pc = msg.program
             self.lightGuide.send_colors(self.bank_msb, self.bank_lsb, msg.program)
             self.setSongCallback(self.bank_msb, self.bank_lsb, msg.program, 
                                  self.lightGuide.get_song_title(self.bank_msb, self.bank_lsb, msg.program))
 
+    def get_current_data(self):
+        if self.bank_msb is None or self.bank_lsb is None or self.pc is None:
+            return (None, None, None, "No song loaded")
+        return (self.bank_msb, self.bank_lsb, self.pc, 
+                self.lightGuide.get_song_title(self.bank_msb, self.bank_lsb, self.pc))
+    
     def run(self):
         try:
             with mido.open_input(self.port_name) as port:
@@ -266,7 +279,7 @@ class MidiMonitor:
 
 
 class LightGuideGuiApp:
-    def __init__(self, ):
+    def __init__(self):
 
         self.root = tk.Tk()
         self.bank_var = tk.StringVar()
@@ -281,6 +294,9 @@ class LightGuideGuiApp:
 
         self.currentSongLabel = tk.Label(self.root, text="No song loaded")
         self.currentSongLabel.pack()
+
+        self.reloadButton = tk.Button(self.root, text="Reload Color Definitions", command=self.reload_colors)
+        self.reloadButton.pack()
 
         self.lightGuide = LightGuide(songColorsYaml)
         self.midiMonitor = MidiMonitor(self.lightGuide, self.set_song)
@@ -299,6 +315,14 @@ class LightGuideGuiApp:
                 text=f"Bank {bankMsb}:{bankLsb} PC {pc} | {title}"
             )
         )     
+
+    def reload_colors(self):
+        self.lightGuide.load_defs()
+        bank_msb, bank_lsb, pc, title = self.midiMonitor.get_current_data()
+        if pc is not None:
+            # we have a song loaded, so we need to re-send the colors for it
+            self.set_song(bank_msb, bank_lsb, pc, title)
+            self.lightGuide.send_colors(bank_msb, bank_lsb, pc)
 
 
 
