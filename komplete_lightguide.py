@@ -124,8 +124,8 @@ class LightGuide:
 
         for d in hid.enumerate():
             if d['vendor_id'] == VID:
-                print("Found Komplete Kontrol device!")
-                print(d)
+                if dbg: print("Found Komplete Kontrol device!")
+                if dbg: print(d)
 
         self.hid_device = hid.device()
         self.hid_device.open(VID, PID) # 6092, 4960 = 0x1360. // was 0x1410
@@ -220,7 +220,7 @@ class LightGuide:
                     f"{colors[pos+2]:02X}"
                 )
 
-            print(
+            if dbg: print(
                 f"{octave_start:02d}-{octave_start+len(octave)-1:02d}: "
                 + " ".join(octave)
             )
@@ -237,10 +237,10 @@ class MidiMonitor:
     def __init__(self, lightGuide, setSongCallback):
         self.lightGuide = lightGuide
         self.setSongCallback = setSongCallback
-        print(f"Listening for MIDI messages on {self.port_name}...")
+        if dbg: print(f"Listening for MIDI messages on {self.port_name}...")
 
     def handle_message(self, msg):
-        print(f"Received MIDI message: {msg}")
+        if dbg: print(f"Received MIDI message: {msg}")
         if msg.type == "control_change":
             if msg.control == 0:
                 self.bank_msb = msg.value
@@ -254,14 +254,14 @@ class MidiMonitor:
     def run(self):
         try:
             with mido.open_input(self.port_name) as port:
-                # print(f"Listening on {self.port_name}")
+                if dbg: print(f"Listening on {self.port_name}")
                 while True:
                     msg = port.poll()
                     if msg is not None:
                         self.handle_message(msg)
                     time.sleep(0.01)
         except KeyboardInterrupt:
-            print("\nExiting...")
+            if dbg: print("\nExiting...")
             sys.exit(0)
 
 
