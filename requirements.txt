@@ -2,5 +2,6 @@ hidapi
 mido
 python-rtmidi
 pyyaml
+tkinter
 
 pyinstaller

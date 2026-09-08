@@ -9,7 +9,7 @@ banks:
 
     songs:
 
-      - name: Omnipocus
+      - title: Omnipocus
         pc: 0
         lights:
           C1-C2: yellow
@@ -17,14 +17,14 @@ banks:
           C3-D4: teal
           D#4-E8: blue
 
-      - name: The Road To Willow Creek part 1
+      - title: The Road To Willow Creek part 1
         pc: 9
         lights:
           C-2-F2: yellow
           F#2-F4: orange
           F#4-B5: blue
 
-      - name: The Road To Willow Creek part 2
+      - title: The Road To Willow Creek part 2
         pc: 10
         lights:
           C1-C#2: yellow
@@ -39,7 +39,7 @@ banks:
 
     songs:
 
-      - name: Jump
+      - title: Jump
         pc: 30
         lights:
           C1-E5: lime

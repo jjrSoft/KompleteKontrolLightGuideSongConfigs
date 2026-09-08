@@ -63,6 +63,8 @@ pip install python-rtmidi
 pip install pyyaml
 ```
 
+```TkInter``` is required for the GUI.
+
 To build the standalone executable, `pyinstaller` is needed as well.
 
 The dependencies are listed in `requirements.txt` and can be installed with 
