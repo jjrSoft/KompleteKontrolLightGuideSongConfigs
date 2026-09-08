@@ -1,0 +1,24 @@
+black:   0x000000
+white:   0xFFFFFF
+
+red:     0xFF0000
+green:   0x00FF00
+blue:    0x0000FF
+
+yellow:  0xFFFF00
+cyan:    0x00FFFF
+magenta: 0xFF00FF
+
+orange:  0xFFB000
+purple:  0x8000FF
+
+pink:    0xFF40A0
+lime:    0x80FF00
+teal:    0x00FF80
+sky:     0x40C0FF
+violet:  0xFF00FF
+
+dimred:   0x400000
+dimgreen: 0x004000
+dimblue:  0x000040
+dimwhite: 0x202020

@@ -1,0 +1,45 @@
+# Note: PC are 0-based here (raw midi) but often shown 1-based like in VSTLive
+
+middleC: C4
+
+banks:
+
+  - name: My songs
+    msb: 0
+
+    songs:
+
+      - name: Omnipocus
+        pc: 0
+        lights:
+          C1-C2: yellow
+          C#2-B2: orange
+          C3-D4: teal
+          D#4-E8: blue
+
+      - name: The Road To Willow Creek part 1
+        pc: 9
+        lights:
+          C-2-F2: yellow
+          F#2-F4: orange
+          F#4-B5: blue
+
+      - name: The Road To Willow Creek part 2
+        pc: 10
+        lights:
+          C1-C#2: yellow
+          D2-C#3: orange
+          D3-G3: red
+          G#3-A4: blue
+          Bb4-C5: green
+          C#5-E5: violet
+
+  - name: Covers
+    msb: 1
+
+    songs:
+
+      - name: Jump
+        pc: 30
+        lights:
+          C1-E5: lime
