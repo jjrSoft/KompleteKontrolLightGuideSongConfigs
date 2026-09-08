@@ -4,7 +4,7 @@ middleC: C4
 
 banks:
 
-  - name: My songs
+  - bank: My songs
     msb: 0
 
     songs:
@@ -34,7 +34,7 @@ banks:
           Bb4-C5: green
           C#5-E5: violet
 
-  - name: Covers
+  - bank: Covers
     msb: 1
 
     songs:
