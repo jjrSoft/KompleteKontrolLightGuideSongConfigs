@@ -63,6 +63,13 @@ pip install python-rtmidi
 pip install pyyaml
 ```
 
+To build the standalone executable, `pyinstaller` is needed as well.
+
+The dependencies are listed in `requirements.txt` and can be installed with 
+```bash
+pip install -r requirements.txt
+```
+
 ### macOS MIDI Setup
 
 Enable the IAC Driver:
@@ -240,6 +247,9 @@ Executable will be found in:
 ```text
 dist/
 ```
+
+At this stage, the yaml files will need to be in the same place as the executable.
+
 
 ## Credits
 
