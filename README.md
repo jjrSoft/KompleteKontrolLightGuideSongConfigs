@@ -252,6 +252,44 @@ dist/
 
 At this stage, the yaml files will need to be in the same place as the executable.
 
+## Install Standalone Executable
+
+Copy the executable andn the yaml files to ```~/Applications/KompleteLightGuide```.
+
+Open Automator and create:
+
+```New → Application```
+
+Add:
+
+```Run Shell Script```
+
+and use this as the script:
+
+```
+cd ~/Applications/KompleteLightGuide
+./komplete_lightguide
+```
+
+This way you can start the app from Launchpad like everything else.
+
+To change the icon, for an Automator-created .app, the easiest way is Finder's built-in icon replacement:
+
+1. Find an image you want to use (PNG works fine).
+2. Open it in Preview.
+3. Press ⌘A, then ⌘C.
+4. In Finder, select your ```Komplete Light Guide.app``` (in ```/Applications``` folder)
+5. Press ⌘I (Get Info).
+6. Click the tiny app icon in the upper-left corner of the Info window.
+7. Press ⌘V.
+
+The app immediately gets the new icon.
+
+For a more polished macOS look, convert your image to a square 512×512 or 1024×1024 PNG first.
+
+One caveat: if you later recreate the Automator application, the icon may revert and you'll need to paste it again. For a permanent custom icon, you'd eventually embed an .icns file inside a real app bundle, but for a personal utility the Finder method is by far the quickest.
+
+**Missing:** The dock icon still does not show the icon we just pasted.
 
 ## Credits
 
