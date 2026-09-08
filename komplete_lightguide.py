@@ -287,12 +287,14 @@ class LightGuideGuiApp:
         self.song_var = tk.StringVar()
 
         # Widgets are added here
-        self.root.minsize(500, 50)
-        self.root.maxsize(500, 50)
-        self.root.geometry("500x50+50+50")
+        self.root.minsize(500, 80)
+        self.root.maxsize(500, 80)
+        self.root.geometry("500x80+50+50")
         self.root.title("Komplete Kontrol LightGuide Manager GUI")
 
-        self.currentSongLabel = tk.Label(self.root, text="No song loaded")
+        self.currentPatch = tk.Label(self.root, text="No patch")
+        self.currentPatch.pack()
+        self.currentSongLabel = tk.Label(self.root, text="No song loaded", font=("Helvetica", 16, "bold"))
         self.currentSongLabel.pack()
 
         self.reloadButton = tk.Button(self.root, text="Reload Color Definitions", command=self.reload_colors)
@@ -308,12 +310,19 @@ class LightGuideGuiApp:
         self.midi_thread.start()
         self.root.mainloop()
 
+    def update_labels(self, bankMsb, bankLsb, pc, title):
+        self.currentPatch.config(
+                text=f"Bank {bankMsb}:{bankLsb} — PC {pc}"
+            )   
+        self.currentSongLabel.config(
+                text=f"{title}"
+            )
+
+
     def set_song(self, bankMsb, bankLsb, pc, title):
         self.root.after(
             0,  
-            lambda: self.currentSongLabel.config(
-                text=f"Bank {bankMsb}:{bankLsb} PC {pc} | {title}"
-            )
+            lambda: self.update_labels(bankMsb, bankLsb, pc, title)
         )     
 
     def reload_colors(self):
