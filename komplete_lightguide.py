@@ -1,6 +1,7 @@
 #!/usr/bin/env/python3
 
-from logging import debug, root
+from pathlib import Path
+from logging import debug
 import sys
 import time
 import yaml
@@ -13,8 +14,15 @@ import tkinter as tk
 
 dbg = False
 
-colorsYaml = "colors.yaml"
-songColorsYaml = "song_colors.yaml"
+if getattr(sys, 'frozen', False):
+    # Running as PyInstaller executable
+    APPDIR = Path(sys.executable).parent
+else:
+    # Running from source
+    APPDIR = Path(__file__).resolve().parent
+
+colorsYaml = APPDIR / "colors.yaml"
+songColorsYaml = APPDIR / "song_colors.yaml"
 
 keycount = 61
 
