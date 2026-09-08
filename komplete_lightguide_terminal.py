@@ -6,6 +6,8 @@ import yaml
 import hid
 import mido
 import re
+import threading
+
 
 
 colorsYaml = "colors.yaml"
@@ -68,7 +70,7 @@ class LightGuide:
 
         print(self.songColors)
 
-        self.colorTable = ColorTable(colorsYaml)        
+        self.colorTable = ColorTable(colorsYaml)
         self.songColorsByPC = self.song_colors_by_pc(self.songColors, self.colorTable)
         self.connect()
 
@@ -85,7 +87,7 @@ class LightGuide:
                 preset_lookup[(bank_msb, bank_lsb, program)] = self.parse_light_map(song["lights"], numkeys=keycount, offset=24)
 
         return preset_lookup
-    
+
     def init_rainbow(self, h):
         def wheel(pos):
             pos %= 768
@@ -106,7 +108,7 @@ class LightGuide:
         #     r, g, b = color
         #     h.write([0x82] + [r, g, b]*(keycount))
         #     time.sleep(0.0001)
-        
+
         h.write([0x82] + [60, 60, 255]*(keycount))  # turn off all keys
 
     def connect(self):
@@ -146,7 +148,7 @@ class LightGuide:
 
         name = m.group(1)
         octave = int(m.group(2))
-        
+
         result = (octave + 1) * 12 + NOTES[name]
         print(f"  note_to_midi: {note} -> {result}")
         return result
@@ -194,8 +196,8 @@ class LightGuide:
                     pos = key * 3
                     colors[pos:pos + 3] = [r, g, b]
 
-        # self.print_color_map(colors, numkeys) 
-          
+        # self.print_color_map(colors, numkeys)
+
         return colors
 
     def print_color_map(self, colors, numkeys):
@@ -225,27 +227,33 @@ class LightGuide:
 
 class MidiMonitor:
     port_name = "IAC Driver KompleteLightGuide"
+    bank_msb = 0
+    bank_lsb = 0
 
     def __init__(self, lightGuide):
-        self.lightGuide = lightGuide
+        self.lightGuide = lightGuide        
+
+    def handle_message(self, msg):
+        if msg.type == "control_change":
+            if msg.control == 0:
+                self.bank_msb = msg.value
+            elif msg.control == 32:
+                self.bank_lsb = msg.value
+        elif msg.type == "program_change":
+            self.lightGuide.send_colors(self.bank_msb, self.bank_lsb, msg.program)
 
     def run(self):
-        #sys.exit(0)  # temporary
-
-        with mido.open_input(self.port_name) as port:
-            print(f"Listening on {self.port_name}")
-
-            bank_msb = 0
-            bank_lsb = 0
-
-            for msg in port:
-                if msg.type == "control_change":
-                    if msg.control == 0:
-                        bank_msb = msg.value
-                    elif msg.control == 32:
-                        bank_lsb = msg.value
-                elif msg.type == "program_change":
-                    self.lightGuide.send_colors(bank_msb, bank_lsb, msg.program)
+        try:
+            with mido.open_input(self.port_name) as port:
+                # print(f"Listening on {self.port_name}")
+                while True:
+                    msg = port.poll()
+                    if msg is not None:
+                        self.handle_message(msg)
+                    time.sleep(0.01)
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            sys.exit(0)
 
 lightGuide = LightGuide(songColorsYaml)
 midiMonitor = MidiMonitor(lightGuide)
