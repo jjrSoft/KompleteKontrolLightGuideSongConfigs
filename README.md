@@ -161,15 +161,18 @@ F4-G4: blue
 ### Hex Strings
 
 ```yaml
-C3-C4: FF0000
+C3-C4: "#FF0000"
 D4-E4: 00FF00
-F4-G4: 0000FF
+F4-G4: FF0000
 ```
+
+Hex strings may be written without quotes. Quote values beginning with `#` because YAML treats an unquoted `#` as a comment marker.
 
 ### Integer RGB Values
 
 ```yaml
-C3-C4: 16711680
+C3-C4: 0xFF0000
+D4-E4: 16711680
 ```
 
 Equivalent to:
@@ -177,6 +180,22 @@ Equivalent to:
 ```text
 FF0000
 ```
+
+### RGB Lists
+
+```yaml
+C3-C4: [255, 0, 0]
+D4-E4: [0, 255, 0]
+F4-G4: [0, 0, 255]
+```
+
+RGB list channels may be decimal or hexadecimal integers:
+
+```yaml
+C3-C4: [0xFF, 0x00, 0x00]
+```
+
+RGB list channels must each resolve to an integer from `0` to `255`.
 
 ## Built-In Colors
 

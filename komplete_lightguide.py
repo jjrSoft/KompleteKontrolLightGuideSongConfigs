@@ -65,16 +65,29 @@ class ColorTable:
             for k, v in colors.items()
         }
 
-    def color_to_rgb(self, name):
-        value = self.colors[name.lower()]
+    def color_to_rgb(self, color):
+        value = self.colors.get(color.lower()) if isinstance(color, str) else color
 
-        # notation [255,72,0]
+        if value is None and isinstance(color, str):
+            hex_value = color.lstrip("#")
+            if len(hex_value) != 6:
+                raise ValueError(f"Invalid RGB color: {color}")
+            try:
+                value = int(hex_value, 16)
+            except ValueError as ex:
+                raise ValueError(f"Invalid RGB color: {color}") from ex
+
         if isinstance(value, list):
+            if (len(value) != 3
+                    or any(not isinstance(channel, int)
+                           or isinstance(channel, bool)
+                           or not 0 <= channel <= 255
+                           for channel in value)):
+                raise ValueError(f"Invalid RGB color: {color}")
             return value
 
-        # notation #ff6600
-        if isinstance(value, str):
-            value = int(value.lstrip("#"), 16)
+        if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 0xFFFFFF:
+            raise ValueError(f"Invalid RGB color: {color}")
 
         return [
             (value >> 16) & 0xFF,
