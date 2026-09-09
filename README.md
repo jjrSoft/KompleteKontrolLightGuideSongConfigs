@@ -1,6 +1,6 @@
 # KompleteLightGuide
 
-A lightweight macOS utility for controlling the Native Instruments Komplete Kontrol MK1 Light Guide independently of the Komplete Kontrol software.
+A lightweight macOS utility for controlling the Native Instruments Komplete Kontrol Light Guide independently of the Komplete Kontrol software.
 
 The application listens for MIDI Bank Select and Program Change messages, then updates the keyboard Light Guide according to song definitions stored in a YAML configuration file.
 
@@ -8,29 +8,36 @@ Designed for live performance use with applications such as VST Live.
 
 ## Features
 
-- Direct HID communication with Komplete Kontrol MK1 keyboards
+- Direct HID communication with supported Komplete Kontrol MK1 and MK2 keyboards
+- Automatic keyboard detection with per-model key counts and Light Guide protocols
 - No Komplete Kontrol software required
 - MIDI-driven song selection
 - YAML-based song and color definitions
+- Validation of YAML structure, MIDI ranges, duplicate definitions, and overlapping light ranges
 - Supports named colors, RGB hex values and integer RGB values
-- Fast lookup using precompiled `(bankMSB, program)` mappings
+- Fast lookup using precompiled `(bank MSB, program)` mappings
 - Ideal for setlist-based live performances
 
 ## Supported Hardware
 
-Currently tested with:
+The application detects these USB HID product IDs automatically:
 
-- Komplete Kontrol S61 MK1
+| Model | Protocol | Keys | Product ID |
+|---|---:|---:|---:|
+| Komplete Kontrol S25 MK1 | MK1 | 25 | `0x1340` |
+| Komplete Kontrol S49 MK1 | MK1 | 49 | `0x1350` |
+| Komplete Kontrol S61 MK1 | MK1 | 61 | `0x1360` |
+| Komplete Kontrol S88 MK1 | MK1 | 88 | `0x1410` |
+| Komplete Kontrol S49 MK2 | MK2 | 49 | `0x1610` |
+| Komplete Kontrol S61 MK2 | MK2 | 61 | `0x1620` |
+| Komplete Kontrol S88 MK2 | MK2 | 88 | `0x1630` |
 
-Should also work with other MK1 models after adjusting:
-
-- key count
-- MIDI offset
+MK1 keyboards use RGB Light Guide packets. MK2 keyboards use the MK2 per-key packet protocol and the built-in color mapping.
 
 ## How It Works
 
 ```text
-VST Live
+VST Live (or any other host where you select programs and send bank and program changes)
     │
     ├── Bank Select (CC0)
     └── Program Change
@@ -45,7 +52,7 @@ KompleteLightGuide
 USB HID
             │
             ▼
-Komplete Kontrol MK1
+Supported Komplete Kontrol keyboard
 ```
 
 A song change in VST Live immediately updates the keyboard Light Guide.
@@ -104,18 +111,23 @@ IAC Driver KompleteLightGuide
 
 ## YAML Format
 
+The application loads `song_colors.yaml` from the same directory as the source script or executable.
+
 Example:
 
 ```yaml
+# comments are supported
+middleC: C4
+
 banks:
 
-  - bankMSB: 0
-    name: Main Set
+  - bank: Main Set
+    msb: 0
 
     songs:
 
-      - program: 1
-        name: Song A
+      - title: Song A
+        pc: 1
 
         lights:
           C1-C#2: yellow
@@ -125,14 +137,16 @@ banks:
           Bb4-C5: 1264FF
           C#5-E5: red
 
-      - program: 2
-        name: Song B
+      - title: Song B
+        pc: 2
 
         lights:
           C1-B2: blue
           C3-B4: green
-          C5: red
+          C5-C5: red
 ```
+
+`pc` and `msb` values are zero-based MIDI values from `0` to `127`. `middleC` defines the octave convention used when converting note names to MIDI numbers. Light ranges must resolve to MIDI `0` through `127`; the lower and upper endpoints are inclusive.
 
 ## Supported Color Formats
 
@@ -176,13 +190,13 @@ FF0000
 | yellow | FFFF00 |
 | cyan | 00FFFF |
 | magenta | FF00FF |
-| orange | FF8000 |
+| orange | FFB000 |
 | purple | 8000FF |
 | pink | FF40A0 |
 | lime | 80FF00 |
 | teal | 00FF80 |
 | sky | 40C0FF |
-| violet | C040FF |
+| violet | FF00FF |
 | dimred | 400000 |
 | dimgreen | 004000 |
 | dimblue | 000040 |
@@ -192,8 +206,8 @@ FF0000
 
 Song lookup uses:
 
-```python
-(bankMSB, program)
+```text
+(bank MSB, program)
 ```
 
 Example:
@@ -206,26 +220,21 @@ PC  = 1
 matches:
 
 ```yaml
-bankMSB: 0
-program: 1
+msb: 0
+pc: 1
 ```
+
+The bank LSB is currently unused and is treated as `0`.
+
+Unknown MIDI patches are non-fatal: the current song and lights remain unchanged and the status bar shows a warning. Invalid configuration, MIDI input failures, and keyboard failures show an error status and disable device-dependent operation.
 
 ## Running
 
 ```bash
-python komplete_lightguide.py songs.yaml
+python komplete_lightguide.py
 ```
 
-Example output:
-
-```text
-Listening on IAC Driver KompleteLightGuide
-
-Bank=0
-Program=1
-
-Loading: Song A
-```
+The script uses the `song_colors.yaml` and `colors.yaml` files beside it. 
 
 ## Building a Standalone Executable
 
@@ -238,10 +247,13 @@ pip install pyinstaller
 Build:
 
 ```bash
-pyinstaller \
-    --onefile \
-    --hidden-import=mido.backends.rtmidi \
-    komplete_lightguide.py
+pyinstaller komplete_lightguide.spec
+```
+
+For the terminal build, use:
+
+```bash
+pyinstaller komplete_lightguide_terminal.spec
 ```
 
 Executable will be found in:
@@ -254,7 +266,7 @@ At this stage, the yaml files will need to be in the same place as the executabl
 
 ## Install Standalone Executable
 
-Copy the executable andn the yaml files to ```~/Applications/KompleteLightGuide```.
+Copy the executable and the yaml files to ```~/Applications/KompleteLightGuide```.
 
 Open Automator and create:
 
@@ -295,10 +307,9 @@ One caveat: if you later recreate the Automator application, the icon may revert
 
 Based on previous reverse engineering work by members of the Native Instruments community including:
 
-- anykey
-- jasonbrent
-- OlivierJ
-- simonalveteg
+- jasonbrent https://github.com/jasonbrent/SynthesiaKomplete
+- Olivier Jacques https://github.com/ojacques/SynthesiaKontrol
+- Simon Alveteg https://github.com/simonalveteg/KompleteKontrolLightGuide
 
 This project extends those discoveries with song-based Light Guide control for live performance workflows.
 
