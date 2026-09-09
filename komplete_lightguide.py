@@ -17,8 +17,6 @@ import traceback
 VERSION = "v1.0"
 TITLE = "Komplete Kontrol LightGuide Manager GUI"
 
-dbg = False
-
 if getattr(sys, 'frozen', False):
     # Running as PyInstaller executable
     APPDIR = Path(sys.executable).parent
@@ -481,10 +479,6 @@ class LightGuide:
             self.note_offset = self.note_to_midi(self.keyboard["first_note"])
             self.mode = self.keyboard["mode"]
 
-            if dbg:
-                print("Found Komplete Kontrol device!")
-                print(self.keyboard["name"])
-
             self.hid_device = hid.device()
             self.hid_device.open(NATIVE_INSTRUMENTS, product_id)
 
@@ -528,7 +522,6 @@ class LightGuide:
                  + NOTES[middle_c_match.group(1)])
         note_midi = (octave + 1) * 12 + NOTES[name]
         result = 60 + note_midi - middle_c_midi
-        if dbg: print(f"  note_to_midi: {note} -> {result}")
         return result
 
     def parse_light_map(self, note_map, numkeys=88, offset=21):
@@ -548,7 +541,6 @@ class LightGuide:
 
         colors = [0] * (numkeys * 3)
 
-        if dbg: print(f"parse_light_map: note_map = {note_map}")
         for note_range, color_spec in note_map.items():
 
             m = re.match(
@@ -564,10 +556,7 @@ class LightGuide:
 
             start_note = m.group(1)
             end_note = m.group(2)
-            if dbg: print(f"  {start_note} - {end_note} = {color_spec}")
-
             r, g, b = self.color_table.color_to_rgb(color_spec)
-            if dbg: print(f"  color: {color_spec} -> {hex(r)}, {hex(g)}, {hex(b)}")
 
             start_midi = self.note_to_midi(start_note.strip())
             end_midi   = self.note_to_midi(end_note.strip())
@@ -581,7 +570,6 @@ class LightGuide:
         return colors
 
     def send_colors(self, bank_msb, bank_lsb, pc):
-        if dbg: print(f"send_colors({bank_msb}, {bank_lsb}, {pc})")
         if bank_msb is None or bank_lsb is None:
             self.set_status(Status.WARNING, "MIDI bank selection is incomplete.", None, "")
             return False
@@ -655,10 +643,7 @@ class MidiMonitor:
         self.set_song_callback = set_song_callback
         self.set_status = set_status
         self.available = True
-        if dbg: print(f"Listening for MIDI messages on {self.port_name}...")
-
     def handle_message(self, msg):
-        if dbg: print(f"Received MIDI message: {msg}")
         if msg.type == "control_change":
             if msg.control == 0:
                 self.bank_msb = msg.value
@@ -681,14 +666,12 @@ class MidiMonitor:
     def run(self):
         try:
             with mido.open_input(self.port_name) as port:
-                if dbg: print(f"Listening on {self.port_name}")
                 while True:
                     msg = port.poll()
                     if msg is not None:
                         self.handle_message(msg)
                     time.sleep(0.01)
         except KeyboardInterrupt:
-            if dbg: print("\nExiting...")
             sys.exit(0)
         except Exception as ex:
             self.available = False
