@@ -298,28 +298,67 @@ class LightGuide:
             self.set_status(
                 Status.ERROR,
                 f"Cannot load color configuration: {colorsYaml.name}",
-                str(colorsYaml)
+                str(colorsYaml),
+                "Show full path"
             )
             return
 
         self.device_available = self.connect()
         self.load_song_colors()
         if not self.device_available:
-            self.set_status(Status.ERROR, "Komplete Kontrol keyboard unavailable.")
+            self.set_status(Status.ERROR, "Komplete Kontrol keyboard unavailable.", None, "")
 
     def load_song_colors(self):
         try:
             with open(self.song_colors_file, "r") as f:
-                self.songColors = yaml.safe_load(f)
-        except Exception as ex:
+                song_colors_text = f.read()
+        except OSError:
             self.songColorsByPC, self.songLookup = None, None
             self.configuration_valid = False
             self.validation_errors = []
             self.set_validation_errors([])
             self.set_status(
                 Status.ERROR,
-                f"Cannot load song colors file: {Path(self.song_colors_file).name}",
-                str(Path(self.song_colors_file).resolve())
+                f"Cannot read song colors file: {Path(self.song_colors_file).name}",
+                str(Path(self.song_colors_file).resolve()),
+                "Show full path"
+            )
+            return
+
+        try:
+            self.songColors = yaml.safe_load(song_colors_text)
+        except yaml.YAMLError as ex:
+            self.songColorsByPC, self.songLookup = None, None
+            self.configuration_valid = False
+            self.validation_errors = []
+            self.set_validation_errors([])
+            location = ""
+            if getattr(ex, "problem_mark", None) is not None:
+                mark = ex.problem_mark
+                location = f" at line {mark.line + 1}, column {mark.column + 1}"
+            details = str(Path(self.song_colors_file).resolve())
+            if getattr(ex, "problem_mark", None) is not None:
+                line_number = ex.problem_mark.line + 1
+                source_lines = song_colors_text.splitlines()
+                if 0 < line_number <= len(source_lines):
+                    first_context_line = max(1, line_number - 2)
+                    last_context_line = min(len(source_lines), line_number + 1)
+                    details += "\nYAML context:"
+                    for context_line in range(first_context_line, last_context_line + 1):
+                        marker = ">" if context_line == line_number else " "
+                        details += f"\n{marker} {context_line}: {source_lines[context_line - 1]}"
+                    details += (
+                        f"\n  {' ' * (len(str(line_number)) + 2 + ex.problem_mark.column)}^"
+                        "\nThe parser may identify the line where the structure becomes "
+                        "invalid; check the surrounding lines for a missing key or ':'"
+                    )
+            if str(ex):
+                details += f"\n{ex}"
+            self.set_status(
+                Status.ERROR,
+                f"Invalid YAML in song colors file: {Path(self.song_colors_file).name}",
+                details,
+                "Details"
             )
             return
 
@@ -333,7 +372,8 @@ class LightGuide:
             self.set_status(
                 Status.ERROR,
                 f"Cannot validate song colors file: {Path(self.song_colors_file).name}",
-                str(Path(self.song_colors_file).resolve())
+                str(Path(self.song_colors_file).resolve()),
+                "Show full path"
             )
             return
 
@@ -342,7 +382,12 @@ class LightGuide:
         if errors:
             self.songColorsByPC, self.songLookup = None, None
             self.configuration_valid = False
-            self.set_status(Status.ERROR, "Errors found in song colors config.")
+            self.set_status(
+                Status.ERROR,
+                "Errors found in song colors config.",
+                None,
+                "View Validation Errors"
+            )
             return
 
         self.middle_c = self.songColors.get("middleC", "C4")
@@ -359,12 +404,13 @@ class LightGuide:
             self.set_status(
                 Status.ERROR,
                 f"Cannot build song colors file: {Path(self.song_colors_file).name}",
-                str(Path(self.song_colors_file).resolve())
+                str(Path(self.song_colors_file).resolve()),
+                "Show full path"
             )
             return
 
         self.configuration_valid = True
-        self.set_status(Status.OK, "OK")
+        self.set_status(Status.OK, "OK", None, "")
 
     def create_lookup_tables(self, songColors):
         preset_lookup = {}
@@ -424,7 +470,9 @@ class LightGuide:
                 self.set_device_available(False)
                 self.set_status(
                     Status.ERROR,
-                    "Komplete Kontrol keyboard not found."
+                    "Komplete Kontrol keyboard not found.",
+                    None,
+                    ""
                 )
                 return False
 
@@ -450,7 +498,9 @@ class LightGuide:
             self.set_device_available(False)
             self.set_status(
                 Status.ERROR,
-                f"Cannot connect to Komplete Kontrol keyboard: {ex}"
+                f"Cannot connect to Komplete Kontrol keyboard: {ex}",
+                None,
+                ""
             )
             return False
 
@@ -530,25 +580,27 @@ class LightGuide:
     def send_colors(self, bankMsb, bankLsb, pc):
         if dbg: print(f"send_colors({bankMsb}, {bankLsb}, {pc})")
         if bankMsb is None or bankLsb is None:
-            self.set_status(Status.WARNING, "MIDI bank selection is incomplete.")
+            self.set_status(Status.WARNING, "MIDI bank selection is incomplete.", None, "")
             return False
 
         key = (bankMsb, bankLsb, pc)
         if self.songColorsByPC is None:
-            self.set_status(Status.ERROR, "Song colors configuration is unavailable.")
+            self.set_status(Status.ERROR, "Song colors configuration is unavailable.", None, "")
             return False
         colors = self.songColorsByPC.get(key)
         if colors is None:
             self.set_status(
                 Status.WARNING,
-                f"Unknown song: bank {bankMsb}:{bankLsb} — PC {pc}"
+                f"Unknown song: bank {bankMsb}:{bankLsb} — PC {pc}",
+                None,
+                ""
             )
             return False
 
         if self.hid_device is None:
             self.device_available = False
             self.set_device_available(False)
-            self.set_status(Status.ERROR, "Komplete Kontrol keyboard is unavailable.")
+            self.set_status(Status.ERROR, "Komplete Kontrol keyboard is unavailable.", None, "")
             return False
 
         try:
@@ -561,10 +613,10 @@ class LightGuide:
             self.hid_device = None
             self.device_available = False
             self.set_device_available(False)
-            self.set_status(Status.ERROR, f"Cannot send colors to keyboard: {ex}")
+            self.set_status(Status.ERROR, f"Cannot send colors to keyboard: {ex}", None, "")
             return False
 
-        self.set_status(Status.OK, "OK")
+        self.set_status(Status.OK, "OK", None, "")
         return True
 
     def _to_mk2_colors(self, colors):
@@ -632,7 +684,7 @@ class MidiMonitor:
             sys.exit(0)
         except Exception as ex:
             self.available = False
-            self.set_status(Status.ERROR, f"Cannot open MIDI input: {ex}")
+            self.set_status(Status.ERROR, f"Cannot open MIDI input: {ex}", None, "")
 
 
 class Status(Enum):
@@ -655,6 +707,7 @@ class LightGuideGuiApp:
         self.error_window = None
         self.error_log = None
         self.status_details = []
+        self.status_details_label = "Show full path"
 
         # Widgets are added here
         self.root.minsize(500, 120)
@@ -696,7 +749,7 @@ class LightGuideGuiApp:
         )
         self.errorButton.bind("<Button-1>", lambda event: self.show_validation_errors())
         self.errorButton.pack_forget()
-        self.set_status(Status.NONE, "Loading...")
+        self.set_status(Status.NONE, "Loading...", None, "")
 
         self.lightGuide = LightGuide(
             songColorsYaml,
@@ -704,6 +757,7 @@ class LightGuideGuiApp:
             self.set_validation_errors,
             self.set_device_available
         )
+        self.set_device_available(self.lightGuide.device_available)
         if self.lightGuide.device_available and self.lightGuide.configuration_valid:
             self.midiMonitor = MidiMonitor(
                 self.lightGuide,
@@ -717,15 +771,15 @@ class LightGuideGuiApp:
             self.midi_thread.start()
         else:
             self.midiMonitor = None
-            self.set_device_available(False)
 
         self.root.mainloop()
 
     def set_device_available(self, available):
         self.reloadButton.config(state=tk.NORMAL if available else tk.DISABLED)
 
-    def set_status(self, status: Status, message: str, details=None):
+    def set_status(self, status: Status, message: str, details, link_text):
         self.status_details = [details] if details else []
+        self.status_details_label = link_text
 
         def update():
             self.statusVar.set(message)
@@ -738,7 +792,7 @@ class LightGuideGuiApp:
             self.errorButton.config(
                 bg=STATUS_COLORS[status],
                 fg="#0645AD",
-                text="Show full path" if self.status_details else "View Validation Errors"
+                text=self.status_details_label
             )
 
             if self.status_details and not self.errorButton.winfo_manager():
@@ -822,6 +876,18 @@ class LightGuideGuiApp:
         self.lightGuide.load_song_colors()
         if not self.lightGuide.configuration_valid:
             return
+
+        if self.midiMonitor is None and self.lightGuide.device_available:
+            self.midiMonitor = MidiMonitor(
+                self.lightGuide,
+                self.set_song,
+                self.set_status
+            )
+            self.midi_thread = threading.Thread(
+                target=self.midiMonitor.run,
+                daemon=True
+            )
+            self.midi_thread.start()
 
         bank_msb, bank_lsb, pc, title = self.midiMonitor.get_current_data()
         if pc is not None:
