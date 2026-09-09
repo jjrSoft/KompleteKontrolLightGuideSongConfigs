@@ -318,10 +318,6 @@ The generated PyInstaller app bundle includes the icon. If an Automator launcher
 
 The app immediately gets the new icon.
 
-For a more polished macOS look, convert your image to a square 512×512 or 1024×1024 PNG first.
-
-One caveat: if you later recreate the Automator application, the icon may revert and you'll need to paste it again. For a permanent custom icon, you'd eventually embed an .icns file inside a real app bundle, but for a personal utility the Finder method is by far the quickest.
-
 ## Credits
 
 Based on previous reverse engineering work by members of the Native Instruments community including:
