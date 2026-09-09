@@ -492,6 +492,8 @@ class LightGuide:
             # initialize device
             self._write_hid([0xa0, 0x00, 0x00])
             self.init_rainbow(self.hid_device)
+            self.device_available = True
+            self.set_device_available(True)
             return True
         except Exception as ex:
             self.hid_device = None
