@@ -292,15 +292,7 @@ class LightGuide:
         self.note_offset = 24
         self.mode = "MK1"
 
-        try:
-            self.colorTable = ColorTable(colorsYaml)
-        except Exception as ex:
-            self.set_status(
-                Status.ERROR,
-                f"Cannot load color configuration: {colorsYaml.name}",
-                str(colorsYaml),
-                "Show full path"
-            )
+        if not self.load_color_table():
             return
 
         self.device_available = self.connect()
@@ -411,6 +403,21 @@ class LightGuide:
 
         self.configuration_valid = True
         self.set_status(Status.OK, "OK", None, "")
+
+    def load_color_table(self):
+        try:
+            color_table = ColorTable(colorsYaml)
+        except Exception:
+            self.set_status(
+                Status.ERROR,
+                f"Cannot load color configuration: {colorsYaml.name}",
+                str(colorsYaml),
+                "Show full path"
+            )
+            return False
+
+        self.colorTable = color_table
+        return True
 
     def create_lookup_tables(self, songColors):
         preset_lookup = {}
@@ -729,7 +736,7 @@ class LightGuideGuiApp:
         self.currentSongLabel = tk.Label(self.root, text="No song loaded", font=("Helvetica", 16, "bold"))
         self.currentSongLabel.pack()
 
-        self.reloadButton = tk.Button(self.root, text="Reload Color Definitions", command=self.reload_colors)
+        self.reloadButton = tk.Button(self.root, text="Reload Song Colors", command=self.reload_colors)
         self.reloadButton.pack()
 
         self.statusVar = tk.StringVar(value="Initializing")
@@ -883,6 +890,9 @@ class LightGuideGuiApp:
 
     def reload_colors(self):
         current_data = self.midiMonitor.get_current_data() if self.midiMonitor else None
+        if not self.lightGuide.load_color_table():
+            return
+
         self.lightGuide.load_song_colors()
         if not self.lightGuide.configuration_valid:
             return
