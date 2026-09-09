@@ -296,10 +296,13 @@ class LightGuide:
         if not self.load_color_table():
             return
 
-        self.device_available = self.connect()
         self.load_song_colors()
+        self.device_available = self.connect()
+        if self.configuration_valid and self.device_available:
+            self.build_song_colors()
         if not self.device_available:
-            self.set_status(Status.ERROR, "Komplete Kontrol keyboard unavailable.", None, "")
+            if self.configuration_valid:
+                self.set_status(Status.ERROR, "Komplete Kontrol keyboard unavailable.", None, "")
 
     def load_song_colors(self):
         try:
@@ -369,10 +372,15 @@ class LightGuide:
             )
             return
 
+        self.song_colors_by_pc, self.song_lookup = None, None
         self.middle_c = self.song_colors.get("middleC", "C4")
         if self.keyboard is not None:
             self.note_offset = self.note_to_midi(self.keyboard["first_note"])
 
+        self.configuration_valid = True
+        self.set_status(Status.OK, "OK", None, "")
+
+    def build_song_colors(self):
         try:
             self.song_colors_by_pc, self.song_lookup = self.create_lookup_tables(self.song_colors)
         except Exception as ex:
@@ -382,10 +390,9 @@ class LightGuide:
                 str(Path(self.song_colors_file).resolve()),
                 "Show full path"
             )
-            return
+            return False
 
-        self.configuration_valid = True
-        self.set_status(Status.OK, "OK", None, "")
+        return True
 
     def _song_configuration_error(self, status, message, details, link_text):
         self.song_colors_by_pc, self.song_lookup = None, None
@@ -873,6 +880,9 @@ class LightGuideGuiApp:
 
         self.light_guide.load_song_colors()
         if not self.light_guide.configuration_valid:
+            return
+
+        if not self.light_guide.build_song_colors():
             return
 
         if self.midi_monitor is None and self.light_guide.device_available:
