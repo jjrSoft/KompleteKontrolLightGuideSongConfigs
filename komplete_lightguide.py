@@ -456,9 +456,9 @@ class LightGuide:
         #     time.sleep(0.0001)
 
         if self.mode == "MK2":
-            h.write([0x81] + [0] * self.keycount)
+            self._write_hid([0x81] + [0] * self.keycount)
         else:
-            h.write([0x82] + [60, 60, 255] * self.keycount)
+            self._write_hid([0x82] + [60, 60, 255] * self.keycount)
 
     def connect(self):
         try:
@@ -490,7 +490,7 @@ class LightGuide:
             self.hid_device.open(NATIVE_INSTRUMENTS, product_id)
 
             # initialize device
-            self.hid_device.write([0xa0, 0x00, 0x00])
+            self._write_hid([0xa0, 0x00, 0x00])
             self.init_rainbow(self.hid_device)
             return True
         except Exception as ex:
@@ -600,17 +600,15 @@ class LightGuide:
             return False
 
         if self.hid_device is None:
-            self.device_available = False
-            self.set_device_available(False)
-            self.set_status(Status.ERROR, "Komplete Kontrol keyboard is unavailable.", None, "")
-            return False
+            if not self.connect():
+                return False
 
         try:
             if self.mode == "MK2":
                 packet = [0x81] + self._to_mk2_colors(colors)
             else:
                 packet = [0x82] + colors
-            self.hid_device.write(packet)
+            self._write_hid(packet)
         except Exception as ex:
             self.hid_device = None
             self.device_available = False
@@ -620,6 +618,13 @@ class LightGuide:
 
         self.set_status(Status.OK, "OK", None, "")
         return True
+
+    def _write_hid(self, packet):
+        written = self.hid_device.write(packet)
+        if written != len(packet):
+            raise OSError(
+                f"keyboard accepted {written} of {len(packet)} bytes"
+            )
 
     def _to_mk2_colors(self, colors):
         palette = {
@@ -875,6 +880,7 @@ class LightGuideGuiApp:
         )
 
     def reload_colors(self):
+        current_data = self.midiMonitor.get_current_data() if self.midiMonitor else None
         self.lightGuide.load_song_colors()
         if not self.lightGuide.configuration_valid:
             return
@@ -891,7 +897,10 @@ class LightGuideGuiApp:
             )
             self.midi_thread.start()
 
-        bank_msb, bank_lsb, pc, title = self.midiMonitor.get_current_data()
+        if current_data is None:
+            current_data = self.midiMonitor.get_current_data()
+
+        bank_msb, bank_lsb, pc, title = current_data
         if pc is not None:
             # we have a song loaded, so we need to re-send the colors for it
             self.set_song(bank_msb, bank_lsb, pc, title)
