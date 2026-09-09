@@ -10,7 +10,9 @@ import mido
 import re
 import threading
 import tkinter as tk
-
+from tkinter import messagebox
+from enum import Enum
+import traceback
 
 dbg = False
 
@@ -71,24 +73,268 @@ class ColorTable:
         ]
 
 
+class SongColorsValidator:
+    def __init__(self, color_table):
+        self.color_table = color_table
+        self.middle_c = "C4"
+
+    def validate(self, data):
+        errors = []
+        if not isinstance(data, dict):
+            return ["Top level YAML structure must be a mapping"]
+
+        self.middle_c = data.get("middleC", "C4")
+        self._validate_song_metadata(data, errors)
+        self._validate_banks(data.get("banks"), errors)
+        return errors
+
+    def _validate_song_metadata(self, data, errors):
+        if "banks" not in data:
+            errors.append("Missing required top-level key: banks")
+
+        middle_c = data.get("middleC")
+        if middle_c is not None and not self._valid_note(middle_c):
+            errors.append("'middleC' must be a valid note, such as C4")
+            self.middle_c = "C4"
+
+    def _validate_banks(self, banks, errors):
+        if not isinstance(banks, list):
+            errors.append("'banks' must be a list")
+            return
+
+        definitions = set()
+        for bank_idx, bank in enumerate(banks, start=1):
+            self._validate_bank(bank, bank_idx, errors, definitions)
+
+    def _validate_bank(self, bank, bank_idx, errors, definitions):
+        if not isinstance(bank, dict):
+            errors.append(f"Bank #{bank_idx} must be a mapping")
+            return
+
+        bank_name = bank.get("bank", f"#{bank_idx}")
+        if not isinstance(bank_name, str) or not bank_name.strip():
+            errors.append(f"Bank #{bank_idx} 'bank' must be a non-empty string")
+            bank_name = f"#{bank_idx}"
+
+        msb = bank.get("msb")
+        if not self._valid_midi_value(msb):
+            errors.append(f"Bank {bank_name} 'msb' must be an integer from 0 to 127")
+
+        songs = bank.get("songs")
+        if not isinstance(songs, list):
+            errors.append(f"Bank {bank_name} 'songs' must be a list")
+            return
+
+        for song_idx, song in enumerate(songs, start=1):
+            self._validate_song(song, bank_name, song_idx, errors, msb, definitions)
+
+    def _validate_song(self, song, bank_name, song_idx, errors, msb, definitions):
+        if not isinstance(song, dict):
+            errors.append(f"Bank {bank_name} song #{song_idx} must be a mapping")
+            return
+
+        title = song.get("title", f"#{song_idx}")
+        if not isinstance(title, str) or not title.strip():
+            errors.append(f"Bank {bank_name} song #{song_idx} 'title' must be a non-empty string")
+            title = f"#{song_idx}"
+
+        pc = song.get("pc")
+        if not self._valid_midi_value(pc):
+            errors.append(f"Bank {bank_name} song {title} 'pc' must be an integer from 0 to 127")
+        elif self._definition_seen(msb, pc, definitions):
+            errors.append(f"Duplicate song definition for bank MSB {msb}, PC {pc}")
+
+        lights = song.get("lights")
+        if not isinstance(lights, dict):
+            errors.append(f"Bank {bank_name} PC {pc} 'lights' must be a mapping")
+            return
+
+        light_ranges = []
+        for note_range, color in lights.items():
+            self._validate_light(
+                note_range,
+                color,
+                bank_name,
+                pc,
+                errors,
+                light_ranges
+            )
+
+    def _validate_light(self, note_range, color, bank_name, pc, errors, light_ranges):
+        range_pattern = r'^([A-G][#b]?-?\d+)\s*-\s*([A-G][#b]?-?\d+)$'
+        match = re.match(range_pattern, note_range) if isinstance(note_range, str) else None
+        if not match:
+            errors.append(f"Bank {bank_name} PC {pc} has an invalid note range: {note_range}")
+            return
+
+        for note in match.groups():
+            if not self._valid_note(note):
+                errors.append(f"Bank {bank_name} PC {pc} has an invalid note: {note}")
+
+        if not all(self._valid_note(note) for note in match.groups()):
+            return
+
+        start_midi = self._note_to_midi(match.group(1))
+        end_midi = self._note_to_midi(match.group(2))
+        if start_midi < 0:
+            errors.append(
+                f"Bank {bank_name} PC {pc} bottom note {match.group(1)} "
+                f"is MIDI {start_midi}; use {self._midi_to_note(0)} or higher"
+            )
+        if end_midi > 127:
+            errors.append(
+                f"Bank {bank_name} PC {pc} top note {match.group(2)} "
+                f"is MIDI {end_midi}; use {self._midi_to_note(127)} or lower"
+            )
+        if start_midi < 0 or end_midi > 127:
+            return
+
+        if start_midi > end_midi:
+            errors.append(f"Bank {bank_name} PC {pc} has a reversed note range: {note_range}")
+            return
+
+        for previous_start, previous_end, previous_range in light_ranges:
+            if start_midi <= previous_end and end_midi >= previous_start:
+                errors.append(
+                    f"Bank {bank_name} PC {pc} has overlapping light ranges: "
+                    f"{previous_range} and {note_range}"
+                )
+        light_ranges.append((start_midi, end_midi, note_range))
+
+        if not self._valid_color(color):
+            errors.append(f"Bank {bank_name} PC {pc} has an invalid color: {color}")
+
+    def _definition_seen(self, msb, pc, definitions):
+        definition = (msb, pc)
+        if definition in definitions:
+            return True
+        definitions.add(definition)
+        return False
+
+    def _note_to_midi(self, note):
+        match = re.fullmatch(r'([A-G][#b]?)(-?\d+)', note)
+        reference = re.fullmatch(r'([A-G][#b]?)(-?\d+)', self.middle_c)
+        reference_midi = (int(reference.group(2)) + 1) * 12 + NOTES[reference.group(1)]
+        note_midi = (int(match.group(2)) + 1) * 12 + NOTES[match.group(1)]
+        return 60 + note_midi - reference_midi
+
+    def _midi_to_note(self, midi):
+        reference = re.fullmatch(r'([A-G][#b]?)(-?\d+)', self.middle_c)
+        reference_midi = (int(reference.group(2)) + 1) * 12 + NOTES[reference.group(1)]
+        absolute_midi = reference_midi + midi - 60
+        note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        octave, semitone = divmod(absolute_midi, 12)
+        return f"{note_names[semitone]}{octave - 1}"
+
+    def _valid_note(self, note):
+        match = re.fullmatch(r'[A-G][#b]?(-?\d+)', note) if isinstance(note, str) else None
+        return match is not None and -2 <= int(match.group(1)) <= 9
+
+    def _valid_midi_value(self, value):
+        return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 127
+
+    def _valid_color(self, color):
+        if isinstance(color, str):
+            if color.lower() in self.color_table.colors:
+                return True
+            try:
+                return len(color.lstrip("#")) == 6 and int(color.lstrip("#"), 16) >= 0
+            except ValueError:
+                return False
+        if isinstance(color, int):
+            return 0 <= color <= 0xFFFFFF
+        return (isinstance(color, list)
+                and len(color) == 3
+                and all(isinstance(channel, int) and not isinstance(channel, bool)
+                        and 0 <= channel <= 255 for channel in color))
+
+
 class LightGuide:
     hid_device = None
+    configuration_valid =   False
 
-    def __init__(self, song_colors_file):
+    def __init__(self, song_colors_file, set_status, set_validation_errors,
+                 set_device_available):
         self.song_colors_file = song_colors_file
-        self.colorTable = ColorTable(colorsYaml)
-
+        self.set_status = set_status
+        self.set_validation_errors = set_validation_errors
+        self.set_device_available = set_device_available
         self.songColorsByPC, self.songLookup = None, None
-        self.load_defs()
-    
-        if dbg: print(self.songColors)
+        self.validation_errors = []
+        self.configuration_valid = False
+        self.device_available = False
+        self.middle_c = "C4"
 
-        self.connect()
+        try:
+            self.colorTable = ColorTable(colorsYaml)
+        except Exception as ex:
+            self.set_status(
+                Status.ERROR,
+                f"Cannot load color configuration: {colorsYaml.name}",
+                str(colorsYaml)
+            )
+            return
 
-    def load_defs(self):
-        with open(self.song_colors_file, "r") as f:
-            self.songColors = yaml.safe_load(f)
-        self.songColorsByPC, self.songLookup = self.create_lookup_tables(self.songColors)
+        self.load_song_colors()
+
+        if self.configuration_valid:
+            self.device_available = self.connect()
+
+    def load_song_colors(self):
+        try:
+            with open(self.song_colors_file, "r") as f:
+                self.songColors = yaml.safe_load(f)
+        except Exception as ex:
+            self.songColorsByPC, self.songLookup = None, None
+            self.configuration_valid = False
+            self.validation_errors = []
+            self.set_validation_errors([])
+            self.set_status(
+                Status.ERROR,
+                f"Cannot load song colors file: {Path(self.song_colors_file).name}",
+                str(Path(self.song_colors_file).resolve())
+            )
+            return
+
+        try:
+            errors = SongColorsValidator(self.colorTable).validate(self.songColors)
+        except Exception:
+            self.songColorsByPC, self.songLookup = None, None
+            self.configuration_valid = False
+            self.validation_errors = []
+            self.set_validation_errors([])
+            self.set_status(
+                Status.ERROR,
+                f"Cannot validate song colors file: {Path(self.song_colors_file).name}",
+                str(Path(self.song_colors_file).resolve())
+            )
+            return
+
+        self.validation_errors = errors
+        self.set_validation_errors(errors)
+        if errors:
+            self.songColorsByPC, self.songLookup = None, None
+            self.configuration_valid = False
+            self.set_status(Status.ERROR, "Errors found in song colors config.")
+            return
+
+        self.middle_c = self.songColors.get("middleC", "C4")
+        try:
+            self.songColorsByPC, self.songLookup = self.create_lookup_tables(self.songColors)
+        except Exception as ex:
+            self.songColorsByPC, self.songLookup = None, None
+            self.configuration_valid = False
+            self.validation_errors = []
+            self.set_validation_errors([])
+            self.set_status(
+                Status.ERROR,
+                f"Cannot build song colors file: {Path(self.song_colors_file).name}",
+                str(Path(self.song_colors_file).resolve())
+            )
+            return
+
+        self.configuration_valid = True
+        self.set_status(Status.OK, "OK")
 
     def create_lookup_tables(self, songColors):
         preset_lookup = {}
@@ -135,23 +381,35 @@ class LightGuide:
         VID = 0x17cc
         PID = 0x1360
 
-        for d in hid.enumerate():
-            if d['vendor_id'] == VID:
-                if dbg: print("Found Komplete Kontrol device!")
-                if dbg: print(d)
+        try:
+            devices = hid.enumerate(VID, PID)
+            if not devices:
+                self.set_device_available(False)
+                self.set_status(
+                    Status.ERROR,
+                    "Komplete Kontrol keyboard not found."
+                )
+                return False
 
-        self.hid_device = hid.device()
-        self.hid_device.open(VID, PID) # 6092, 4960 = 0x1360. // was 0x1410
+            if dbg:
+                print("Found Komplete Kontrol device!")
+                print(devices[0])
 
-        # initialize device
-        self.hid_device.write([0xa0, 0x00, 0x00])
-        self.init_rainbow(self.hid_device)
+            self.hid_device = hid.device()
+            self.hid_device.open(VID, PID) # 6092, 4960 = 0x1360. // was 0x1410
 
-    def color_list_to_packet(self, colorList):
-        return self.parse_light_map(colorList, numkeys=keycount, offset=24)
-        #packet = [0x82] + color_array
-
-        #return packet
+            # initialize device
+            self.hid_device.write([0xa0, 0x00, 0x00])
+            self.init_rainbow(self.hid_device)
+            return True
+        except Exception as ex:
+            self.hid_device = None
+            self.set_device_available(False)
+            self.set_status(
+                Status.ERROR,
+                f"Cannot connect to Komplete Kontrol keyboard: {ex}"
+            )
+            return False
 
     def note_to_midi(self, note):
         """
@@ -169,7 +427,11 @@ class LightGuide:
         name = m.group(1)
         octave = int(m.group(2))
 
-        result = (octave + 1) * 12 + NOTES[name]
+        middle_c_match = re.match(r'^([A-G][#b]?)(-?\d+)$', self.middle_c)
+        middle_c_midi = ((int(middle_c_match.group(2)) + 1) * 12
+                 + NOTES[middle_c_match.group(1)])
+        note_midi = (octave + 1) * 12 + NOTES[name]
+        result = 60 + note_midi - middle_c_midi
         if dbg: print(f"  note_to_midi: {note} -> {result}")
         return result
 
@@ -198,7 +460,11 @@ class LightGuide:
                 note_range
             )
             if not m:
-                raise ValueError(f"Invalid range: {note_range}")
+                messagebox.showerror(
+                    "Error",
+                    f"Invalid range: {note_range}"
+                )
+                return None
 
             start_note = m.group(1)
             end_note = m.group(2)
@@ -216,31 +482,43 @@ class LightGuide:
                     pos = key * 3
                     colors[pos:pos + 3] = [r, g, b]
 
-        # self.print_color_map(colors, numkeys)
-
         return colors
 
-    # def print_color_map(self, colors, numkeys):
-    #     for octave_start in range(0, numkeys, 12):
-    #         octave = []
-    #         for key in range(octave_start, min(octave_start + 12, numkeys)):
+    def send_colors(self, bankMsb, bankLsb, pc):
+        if dbg: print(f"send_colors({bankMsb}, {bankLsb}, {pc})")
+        if bankMsb is None or bankLsb is None:
+            self.set_status(Status.WARNING, "MIDI bank selection is incomplete.")
+            return False
 
-    #             pos = key * 3
+        key = (bankMsb, bankLsb, pc)
+        if self.songColorsByPC is None:
+            self.set_status(Status.ERROR, "Song colors configuration is unavailable.")
+            return False
+        colors = self.songColorsByPC.get(key)
+        if colors is None:
+            self.set_status(
+                Status.WARNING,
+                f"Unknown song: bank {bankMsb}:{bankLsb} — PC {pc}"
+            )
+            return False
 
-    #             octave.append(
-    #                 f"{colors[pos]:02X}"
-    #                 f"{colors[pos+1]:02X}"
-    #                 f"{colors[pos+2]:02X}"
-    #             )
+        if self.hid_device is None:
+            self.device_available = False
+            self.set_device_available(False)
+            self.set_status(Status.ERROR, "Komplete Kontrol keyboard is unavailable.")
+            return False
 
-    #         if dbg: print(
-    #             f"{octave_start:02d}-{octave_start+len(octave)-1:02d}: "
-    #             + " ".join(octave)
-    #         )
+        try:
+            self.hid_device.write([0x82] + colors)
+        except Exception as ex:
+            self.hid_device = None
+            self.device_available = False
+            self.set_device_available(False)
+            self.set_status(Status.ERROR, f"Cannot send colors to keyboard: {ex}")
+            return False
 
-    def send_colors(self, bankMsb, bankLsb, PC):
-        if dbg: print(f"send_colors({bankMsb}, {bankLsb}, {PC})")
-        self.hid_device.write([0x82] + self.songColorsByPC[(bankMsb, bankLsb, PC)])
+        self.set_status(Status.OK, "OK")
+        return True
 
 class MidiMonitor:
     port_name = "IAC Driver KompleteLightGuide"
@@ -248,9 +526,11 @@ class MidiMonitor:
     bank_lsb = None
     pc = None
 
-    def __init__(self, lightGuide, setSongCallback):
+    def __init__(self, lightGuide, setSongCallback, set_status):
         self.lightGuide = lightGuide
         self.setSongCallback = setSongCallback
+        self.set_status = set_status
+        self.available = True
         if dbg: print(f"Listening for MIDI messages on {self.port_name}...")
 
     def handle_message(self, msg):
@@ -261,17 +541,19 @@ class MidiMonitor:
             elif msg.control == 32:
                 self.bank_lsb = msg.value
         elif msg.type == "program_change":
+            if not self.lightGuide.send_colors(self.bank_msb, self.bank_lsb, msg.program):
+                return
+
             self.pc = msg.program
-            self.lightGuide.send_colors(self.bank_msb, self.bank_lsb, msg.program)
-            self.setSongCallback(self.bank_msb, self.bank_lsb, msg.program, 
+            self.setSongCallback(self.bank_msb, self.bank_lsb, msg.program,
                                  self.lightGuide.get_song_title(self.bank_msb, self.bank_lsb, msg.program))
 
     def get_current_data(self):
         if self.bank_msb is None or self.bank_lsb is None or self.pc is None:
             return (None, None, None, "No song loaded")
-        return (self.bank_msb, self.bank_lsb, self.pc, 
+        return (self.bank_msb, self.bank_lsb, self.pc,
                 self.lightGuide.get_song_title(self.bank_msb, self.bank_lsb, self.pc))
-    
+
     def run(self):
         try:
             with mido.open_input(self.port_name) as port:
@@ -284,20 +566,36 @@ class MidiMonitor:
         except KeyboardInterrupt:
             if dbg: print("\nExiting...")
             sys.exit(0)
+        except Exception as ex:
+            self.available = False
+            self.set_status(Status.ERROR, f"Cannot open MIDI input: {ex}")
 
+
+class Status(Enum):
+    NONE = 0
+    OK = 1
+    WARNING = 2
+    ERROR = 3
+
+STATUS_COLORS = {
+    Status.NONE:    "#d0d0d0",  # grey
+    Status.OK:      "#90ee90",  # green
+    Status.WARNING: "#ffd700",  # yellow
+    Status.ERROR:   "#ff6b6b",  # red
+}
 
 class LightGuideGuiApp:
     def __init__(self):
-
         self.root = tk.Tk()
-        self.bank_var = tk.StringVar()
-        self.pc_var = tk.StringVar()
-        self.song_var = tk.StringVar()
+        self.validation_errors = []
+        self.error_window = None
+        self.error_log = None
+        self.status_details = []
 
         # Widgets are added here
-        self.root.minsize(500, 80)
-        self.root.maxsize(500, 80)
-        self.root.geometry("500x80+50+50")
+        self.root.minsize(500, 120)
+        self.root.maxsize(500, 120)
+        self.root.geometry("500x120+50+50")
         self.root.title("Komplete Kontrol LightGuide Manager GUI")
 
         self.currentPatch = tk.Label(self.root, text="No patch")
@@ -308,20 +606,143 @@ class LightGuideGuiApp:
         self.reloadButton = tk.Button(self.root, text="Reload Color Definitions", command=self.reload_colors)
         self.reloadButton.pack()
 
-        self.lightGuide = LightGuide(songColorsYaml)
-        self.midiMonitor = MidiMonitor(self.lightGuide, self.set_song)
-        self.midi_thread = threading.Thread(
-            target=self.midiMonitor.run,
-            daemon=True
+        self.statusVar = tk.StringVar(value="Initializing")
+        self.footer = tk.Frame(self.root)
+        self.footer.pack(side="bottom", fill="x")
+
+        self.statusLabel = tk.Label(
+            self.footer,
+            textvariable=self.statusVar,
+            anchor="w",
+            justify="left",
+            #relief="sunken",
+            bg=STATUS_COLORS[Status.NONE]
         )
 
-        self.midi_thread.start()
+        self.statusLabel.pack(side="left", fill="x", expand=True)
+        self.errorButton = tk.Label(
+            self.footer,
+            text="View Validation Errors",
+            font=("Helvetica", 10, "underline"),
+            fg="#0645AD",
+            bg=STATUS_COLORS[Status.NONE],
+            cursor="hand2",
+            padx=4,
+            pady=2
+        )
+        self.errorButton.bind("<Button-1>", lambda event: self.show_validation_errors())
+        self.errorButton.pack_forget()
+        self.set_status(Status.NONE, "Loading...")
+
+        self.lightGuide = LightGuide(
+            songColorsYaml,
+            self.set_status,
+            self.set_validation_errors,
+            self.set_device_available
+        )
+        if self.lightGuide.device_available:
+            self.midiMonitor = MidiMonitor(
+                self.lightGuide,
+                self.set_song,
+                self.set_status
+            )
+            self.midi_thread = threading.Thread(
+                target=self.midiMonitor.run,
+                daemon=True
+            )
+            self.midi_thread.start()
+        else:
+            self.midiMonitor = None
+            self.set_device_available(False)
+
         self.root.mainloop()
+
+    def set_device_available(self, available):
+        self.reloadButton.config(state=tk.NORMAL if available else tk.DISABLED)
+
+    def set_status(self, status: Status, message: str, details=None):
+        self.status_details = [details] if details else []
+
+        def update():
+            self.statusVar.set(message)
+            self.statusLabel.config(
+                bg=STATUS_COLORS[status]
+            )
+            self.footer.config(
+                bg=STATUS_COLORS[status]
+            )
+            self.errorButton.config(
+                bg=STATUS_COLORS[status],
+                fg="#0645AD",
+                text="Show full path" if self.status_details else "View Validation Errors"
+            )
+
+            if self.status_details and not self.errorButton.winfo_manager():
+                self.errorButton.pack(side="right", padx=4, pady=2)
+            elif not self.status_details and not self.validation_errors:
+                self.errorButton.pack_forget()
+
+            if self.error_log is not None and self.error_log.winfo_exists():
+                self.error_log.config(state="normal")
+                self.error_log.delete("1.0", "end")
+                log_entries = self.status_details + self.validation_errors
+                self.error_log.insert("1.0", "\n".join(log_entries))
+                self.error_log.config(state="disabled")
+
+        self.root.after(0, update)
+
+    def set_validation_errors(self, errors):
+        self.validation_errors = list(errors)
+        if self.validation_errors:
+            self.status_details = []
+            self.errorButton.config(text="View Validation Errors")
+            if not self.errorButton.winfo_manager():
+                self.errorButton.pack(side="right", padx=4, pady=2)
+        elif not self.status_details:
+            self.errorButton.pack_forget()
+
+        if self.error_log is not None and self.error_log.winfo_exists():
+            self.error_log.config(state="normal")
+            self.error_log.delete("1.0", "end")
+            log_entries = self.status_details + self.validation_errors
+            self.error_log.insert("1.0", "\n".join(log_entries))
+            self.error_log.config(state="disabled")
+
+    def show_validation_errors(self):
+        if self.error_window is not None and self.error_window.winfo_exists():
+            self.error_window.deiconify()
+            self.error_window.lift()
+            return
+
+        self.error_window = tk.Toplevel(self.root)
+        self.error_window.title("Validation Errors")
+        self.error_window.geometry("640x360")
+        self.error_window.protocol("WM_DELETE_WINDOW", self.close_validation_errors)
+
+        log_frame = tk.Frame(self.error_window)
+        log_frame.pack(fill="both", expand=True, padx=8, pady=8)
+
+        scrollbar = tk.Scrollbar(log_frame)
+        scrollbar.pack(side="right", fill="y")
+
+        self.error_log = tk.Text(log_frame, wrap="word", yscrollcommand=scrollbar.set)
+        self.error_log.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=self.error_log.yview)
+
+        log_entries = self.status_details + self.validation_errors
+        self.error_log.insert("1.0", "\n".join(log_entries))
+        self.error_log.config(state="disabled")
+
+    def close_validation_errors(self):
+        if self.error_window is not None:
+            self.error_window.destroy()
+            self.error_window = None
+            self.error_log = None
 
     def update_labels(self, bankMsb, bankLsb, pc, title):
         self.currentPatch.config(
                 text=f"Bank {bankMsb}:{bankLsb} — PC {pc}"
-            )   
+            )
         self.currentSongLabel.config(
                 text=f"{title}"
             )
@@ -329,12 +750,15 @@ class LightGuideGuiApp:
 
     def set_song(self, bankMsb, bankLsb, pc, title):
         self.root.after(
-            0,  
+            0,
             lambda: self.update_labels(bankMsb, bankLsb, pc, title)
-        )     
+        )
 
     def reload_colors(self):
-        self.lightGuide.load_defs()
+        self.lightGuide.load_song_colors()
+        if not self.lightGuide.configuration_valid:
+            return
+
         bank_msb, bank_lsb, pc, title = self.midiMonitor.get_current_data()
         if pc is not None:
             # we have a song loaded, so we need to re-send the colors for it
@@ -343,6 +767,9 @@ class LightGuideGuiApp:
 
 
 
-LightGuideGuiApp()
+try:
+    LightGuideGuiApp()
+except Exception:
+    traceback.print_exc()
 
 

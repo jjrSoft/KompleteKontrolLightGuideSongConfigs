@@ -17,29 +17,32 @@ banks:
           C3-D4: teal
           D#4-E8: blue
 
+
       - title: The Road To Willow Creek part 1
         pc: 9
         lights:
-          C-2-F2: yellow
+          C-1-F2: yellow
           F#2-F4: orange
           F#4-B5: blue
 
       - title: The Road To Willow Creek part 2
         pc: 10
         lights:
-          C1-C#2: yellow
-          D2-C#3: orange
-          D3-G3: red
-          G#3-A4: blue
-          Bb4-C5: green
-          C#5-E5: violet
+          C0-C6: teal
+          # C1-C#2: yellow
+          # D2-C#3: orange
+          # D3-G3: red
+          # G#3-A4: blue
+          # Bb4-C5: green
+          # C#5-E5: violet
 
   - bank: Covers
     msb: 1
 
     songs:
 
-      - title: Jump
-        pc: 30
+      - title: No Zones
+        pc: 0
         lights:
-          C1-E5: lime
+          C0-C6: lime
+      
