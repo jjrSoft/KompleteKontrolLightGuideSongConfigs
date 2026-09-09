@@ -604,6 +604,8 @@ class LightGuide:
         if self.hid_device is None:
             if not self.connect():
                 return False
+            if not self.build_song_colors():
+                return False
 
         try:
             if self.mode == "MK2":
@@ -896,7 +898,10 @@ class LightGuideGuiApp:
         if not self.light_guide.configuration_valid:
             return
 
-        if not self.light_guide.build_song_colors():
+        if self.light_guide.device_available:
+            if not self.light_guide.build_song_colors():
+                return
+        else:
             return
 
         if self.midi_monitor is None and self.light_guide.device_available:
