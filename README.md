@@ -245,6 +245,8 @@ pc: 1
 
 The bank LSB is currently unused and is treated as `0`.
 
+## Runtime Errors
+
 Unknown MIDI patches are non-fatal: the current song and lights remain unchanged and the status bar shows a warning. Invalid configuration, MIDI input failures, and keyboard failures show an error status and disable device-dependent operation.
 
 ## Running
