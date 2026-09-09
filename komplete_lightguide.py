@@ -23,8 +23,8 @@ else:
     # Running from source
     APPDIR = Path(__file__).resolve().parent
 
-colorsYaml = APPDIR / "colors.yaml"
-songColorsYaml = APPDIR / "song_colors.yaml"
+colors_yaml = APPDIR / "colors.yaml"
+song_colors_yaml = APPDIR / "song_colors.yaml"
 
 NATIVE_INSTRUMENTS = 0x17cc
 
@@ -56,8 +56,8 @@ NOTES = {
 
 
 class ColorTable:
-    def __init__(self, colorsFile):
-        with open(colorsFile, "r") as f:
+    def __init__(self, colors_file):
+        with open(colors_file, "r") as f:
             colors = yaml.safe_load(f)
 
         self.colors = {
@@ -282,7 +282,7 @@ class LightGuide:
         self.set_status = set_status
         self.set_validation_errors = set_validation_errors
         self.set_device_available = set_device_available
-        self.songColorsByPC, self.songLookup = None, None
+        self.song_colors_by_pc, self.song_lookup = None, None
         self.validation_errors = []
         self.configuration_valid = False
         self.device_available = False
@@ -314,7 +314,7 @@ class LightGuide:
             return
 
         try:
-            self.songColors = yaml.safe_load(song_colors_text)
+            self.song_colors = yaml.safe_load(song_colors_text)
         except yaml.YAMLError as ex:
             location = ""
             if getattr(ex, "problem_mark", None) is not None:
@@ -347,7 +347,7 @@ class LightGuide:
             return
 
         try:
-            errors = SongColorsValidator(self.colorTable).validate(self.songColors)
+            errors = SongColorsValidator(self.color_table).validate(self.song_colors)
         except Exception:
             self._song_configuration_error(
                 Status.ERROR,
@@ -368,12 +368,12 @@ class LightGuide:
             )
             return
 
-        self.middle_c = self.songColors.get("middleC", "C4")
+        self.middle_c = self.song_colors.get("middleC", "C4")
         if self.keyboard is not None:
             self.note_offset = self.note_to_midi(self.keyboard["first_note"])
 
         try:
-            self.songColorsByPC, self.songLookup = self.create_lookup_tables(self.songColors)
+            self.song_colors_by_pc, self.song_lookup = self.create_lookup_tables(self.song_colors)
         except Exception as ex:
             self._song_configuration_error(
                 Status.ERROR,
@@ -387,7 +387,7 @@ class LightGuide:
         self.set_status(Status.OK, "OK", None, "")
 
     def _song_configuration_error(self, status, message, details, link_text):
-        self.songColorsByPC, self.songLookup = None, None
+        self.song_colors_by_pc, self.song_lookup = None, None
         self.configuration_valid = False
         self.validation_errors = []
         self.set_validation_errors([])
@@ -395,24 +395,24 @@ class LightGuide:
 
     def load_color_table(self):
         try:
-            color_table = ColorTable(colorsYaml)
+            color_table = ColorTable(colors_yaml)
         except Exception:
             self.set_status(
                 Status.ERROR,
-                f"Cannot load color configuration: {colorsYaml.name}",
-                str(colorsYaml),
+                f"Cannot load color configuration: {colors_yaml.name}",
+                str(colors_yaml),
                 "Show full path"
             )
             return False
 
-        self.colorTable = color_table
+        self.color_table = color_table
         return True
 
-    def create_lookup_tables(self, songColors):
+    def create_lookup_tables(self, song_colors):
         preset_lookup = {}
         song_lookup = {}
 
-        for bank in songColors["banks"]:
+        for bank in song_colors["banks"]:
             bank_msb = int(bank["msb"])
             bank_lsb = 0    # unused for now
 
@@ -428,7 +428,7 @@ class LightGuide:
         return preset_lookup, song_lookup
 
     def get_song_title(self, bank_msb, bank_lsb, program):
-        return self.songLookup.get((bank_msb, bank_lsb, program), "Unknown Song")
+        return self.song_lookup.get((bank_msb, bank_lsb, program), "Unknown Song")
 
     def init_rainbow(self, h):
         def wheel(pos):
@@ -563,7 +563,7 @@ class LightGuide:
             end_note = m.group(2)
             if dbg: print(f"  {start_note} - {end_note} = {color_spec}")
 
-            r, g, b = self.colorTable.color_to_rgb(color_spec)
+            r, g, b = self.color_table.color_to_rgb(color_spec)
             if dbg: print(f"  color: {color_spec} -> {hex(r)}, {hex(g)}, {hex(b)}")
 
             start_midi = self.note_to_midi(start_note.strip())
@@ -577,21 +577,21 @@ class LightGuide:
 
         return colors
 
-    def send_colors(self, bankMsb, bankLsb, pc):
-        if dbg: print(f"send_colors({bankMsb}, {bankLsb}, {pc})")
-        if bankMsb is None or bankLsb is None:
+    def send_colors(self, bank_msb, bank_lsb, pc):
+        if dbg: print(f"send_colors({bank_msb}, {bank_lsb}, {pc})")
+        if bank_msb is None or bank_lsb is None:
             self.set_status(Status.WARNING, "MIDI bank selection is incomplete.", None, "")
             return False
 
-        key = (bankMsb, bankLsb, pc)
-        if self.songColorsByPC is None:
+        key = (bank_msb, bank_lsb, pc)
+        if self.song_colors_by_pc is None:
             self.set_status(Status.ERROR, "Song colors configuration is unavailable.", None, "")
             return False
-        colors = self.songColorsByPC.get(key)
+        colors = self.song_colors_by_pc.get(key)
         if colors is None:
             self.set_status(
                 Status.WARNING,
-                f"Unknown song: bank {bankMsb}:{bankLsb} — PC {pc}",
+                f"Unknown song: bank {bank_msb}:{bank_lsb} — PC {pc}",
                 None,
                 ""
             )
@@ -647,9 +647,9 @@ class MidiMonitor:
     bank_lsb = None
     pc = None
 
-    def __init__(self, lightGuide, setSongCallback, set_status):
-        self.lightGuide = lightGuide
-        self.setSongCallback = setSongCallback
+    def __init__(self, light_guide, set_song_callback, set_status):
+        self.light_guide = light_guide
+        self.set_song_callback = set_song_callback
         self.set_status = set_status
         self.available = True
         if dbg: print(f"Listening for MIDI messages on {self.port_name}...")
@@ -662,18 +662,18 @@ class MidiMonitor:
             elif msg.control == 32:
                 self.bank_lsb = msg.value
         elif msg.type == "program_change":
-            if not self.lightGuide.send_colors(self.bank_msb, self.bank_lsb, msg.program):
+            if not self.light_guide.send_colors(self.bank_msb, self.bank_lsb, msg.program):
                 return
 
             self.pc = msg.program
-            self.setSongCallback(self.bank_msb, self.bank_lsb, msg.program,
-                                 self.lightGuide.get_song_title(self.bank_msb, self.bank_lsb, msg.program))
+            self.set_song_callback(self.bank_msb, self.bank_lsb, msg.program,
+                                   self.light_guide.get_song_title(self.bank_msb, self.bank_lsb, msg.program))
 
     def get_current_data(self):
         if self.bank_msb is None or self.bank_lsb is None or self.pc is None:
             return (None, None, None, "No song loaded")
         return (self.bank_msb, self.bank_lsb, self.pc,
-                self.lightGuide.get_song_title(self.bank_msb, self.bank_lsb, self.pc))
+                self.light_guide.get_song_title(self.bank_msb, self.bank_lsb, self.pc))
 
     def run(self):
         try:
@@ -716,13 +716,13 @@ class LightGuideGuiApp:
 
         self._build_widgets()
 
-        self.lightGuide = LightGuide(
-            songColorsYaml,
+        self.light_guide = LightGuide(
+            song_colors_yaml,
             self.set_status,
             self.set_validation_errors,
             self.set_device_available
         )
-        self.set_device_available(self.lightGuide.device_available)
+        self.set_device_available(self.light_guide.device_available)
         self._start_midi_monitor()
         self.root.mainloop()
 
@@ -732,29 +732,29 @@ class LightGuideGuiApp:
         self.root.geometry("500x120+50+50")
         self.root.title("Komplete Kontrol LightGuide Manager GUI")
 
-        self.currentPatch = tk.Label(self.root, text="No patch")
-        self.currentPatch.pack()
-        self.currentSongLabel = tk.Label(self.root, text="No song loaded", font=("Helvetica", 16, "bold"))
-        self.currentSongLabel.pack()
+        self.current_patch = tk.Label(self.root, text="No patch")
+        self.current_patch.pack()
+        self.current_song_label = tk.Label(self.root, text="No song loaded", font=("Helvetica", 16, "bold"))
+        self.current_song_label.pack()
 
-        self.reloadButton = tk.Button(self.root, text="Reload Song Colors", command=self.reload_colors)
-        self.reloadButton.pack()
+        self.reload_button = tk.Button(self.root, text="Reload Song Colors", command=self.reload_colors)
+        self.reload_button.pack()
 
-        self.statusVar = tk.StringVar(value="Initializing")
+        self.status_var = tk.StringVar(value="Initializing")
         self.footer = tk.Frame(self.root)
         self.footer.pack(side="bottom", fill="x")
 
-        self.statusLabel = tk.Label(
+        self.status_label = tk.Label(
             self.footer,
-            textvariable=self.statusVar,
+            textvariable=self.status_var,
             anchor="w",
             justify="left",
             #relief="sunken",
             bg=STATUS_COLORS[Status.NONE]
         )
 
-        self.statusLabel.pack(side="left", fill="x", expand=True)
-        self.errorButton = tk.Label(
+        self.status_label.pack(side="left", fill="x", expand=True)
+        self.error_button = tk.Label(
             self.footer,
             text="View Validation Errors",
             font=("Helvetica", 10, "underline"),
@@ -764,50 +764,50 @@ class LightGuideGuiApp:
             padx=4,
             pady=2
         )
-        self.errorButton.bind("<Button-1>", lambda event: self.show_validation_errors())
-        self.errorButton.pack_forget()
+        self.error_button.bind("<Button-1>", lambda event: self.show_validation_errors())
+        self.error_button.pack_forget()
         self.set_status(Status.NONE, "Loading...", None, "")
 
     def _start_midi_monitor(self):
-        if self.lightGuide.device_available and self.lightGuide.configuration_valid:
-            self.midiMonitor = MidiMonitor(
-                self.lightGuide,
+        if self.light_guide.device_available and self.light_guide.configuration_valid:
+            self.midi_monitor = MidiMonitor(
+                self.light_guide,
                 self.set_song,
                 self.set_status
             )
             self.midi_thread = threading.Thread(
-                target=self.midiMonitor.run,
+                target=self.midi_monitor.run,
                 daemon=True
             )
             self.midi_thread.start()
         else:
-            self.midiMonitor = None
+            self.midi_monitor = None
 
     def set_device_available(self, available):
-        self.reloadButton.config(state=tk.NORMAL if available else tk.DISABLED)
+        self.reload_button.config(state=tk.NORMAL if available else tk.DISABLED)
 
     def set_status(self, status: Status, message: str, details, link_text):
         self.status_details = [details] if details else []
         self.status_details_label = link_text
 
         def update():
-            self.statusVar.set(message)
-            self.statusLabel.config(
+            self.status_var.set(message)
+            self.status_label.config(
                 bg=STATUS_COLORS[status]
             )
             self.footer.config(
                 bg=STATUS_COLORS[status]
             )
-            self.errorButton.config(
+            self.error_button.config(
                 bg=STATUS_COLORS[status],
                 fg="#0645AD",
                 text=self.status_details_label
             )
 
-            if self.status_details and not self.errorButton.winfo_manager():
-                self.errorButton.pack(side="right", padx=4, pady=2)
+            if self.status_details and not self.error_button.winfo_manager():
+                self.error_button.pack(side="right", padx=4, pady=2)
             elif not self.status_details and not self.validation_errors:
-                self.errorButton.pack_forget()
+                self.error_button.pack_forget()
 
             if self.error_log is not None and self.error_log.winfo_exists():
                 self.error_log.config(state="normal")
@@ -822,11 +822,11 @@ class LightGuideGuiApp:
         self.validation_errors = list(errors)
         if self.validation_errors:
             self.status_details = []
-            self.errorButton.config(text="View Validation Errors")
-            if not self.errorButton.winfo_manager():
-                self.errorButton.pack(side="right", padx=4, pady=2)
+            self.error_button.config(text="View Validation Errors")
+            if not self.error_button.winfo_manager():
+                self.error_button.pack(side="right", padx=4, pady=2)
         elif not self.status_details:
-            self.errorButton.pack_forget()
+            self.error_button.pack_forget()
 
         if self.error_log is not None and self.error_log.winfo_exists():
             self.error_log.config(state="normal")
@@ -866,49 +866,49 @@ class LightGuideGuiApp:
             self.error_window = None
             self.error_log = None
 
-    def update_labels(self, bankMsb, bankLsb, pc, title):
-        self.currentPatch.config(
-                text=f"Bank {bankMsb}:{bankLsb} — PC {pc}"
+    def update_labels(self, bank_msb, bank_lsb, pc, title):
+        self.current_patch.config(
+                text=f"Bank {bank_msb}:{bank_lsb} — PC {pc}"
             )
-        self.currentSongLabel.config(
+        self.current_song_label.config(
                 text=f"{title}"
             )
 
-    def set_song(self, bankMsb, bankLsb, pc, title):
+    def set_song(self, bank_msb, bank_lsb, pc, title):
         self.root.after(
             0,
-            lambda: self.update_labels(bankMsb, bankLsb, pc, title)
+            lambda: self.update_labels(bank_msb, bank_lsb, pc, title)
         )
 
     def reload_colors(self):
-        current_data = self.midiMonitor.get_current_data() if self.midiMonitor else None
-        if not self.lightGuide.load_color_table():
+        current_data = self.midi_monitor.get_current_data() if self.midi_monitor else None
+        if not self.light_guide.load_color_table():
             return
 
-        self.lightGuide.load_song_colors()
-        if not self.lightGuide.configuration_valid:
+        self.light_guide.load_song_colors()
+        if not self.light_guide.configuration_valid:
             return
 
-        if self.midiMonitor is None and self.lightGuide.device_available:
-            self.midiMonitor = MidiMonitor(
-                self.lightGuide,
+        if self.midi_monitor is None and self.light_guide.device_available:
+            self.midi_monitor = MidiMonitor(
+                self.light_guide,
                 self.set_song,
                 self.set_status
             )
             self.midi_thread = threading.Thread(
-                target=self.midiMonitor.run,
+                target=self.midi_monitor.run,
                 daemon=True
             )
             self.midi_thread.start()
 
         if current_data is None:
-            current_data = self.midiMonitor.get_current_data()
+            current_data = self.midi_monitor.get_current_data()
 
         bank_msb, bank_lsb, pc, title = current_data
         if pc is not None:
             # we have a song loaded, so we need to re-send the colors for it
             self.set_song(bank_msb, bank_lsb, pc, title)
-            self.lightGuide.send_colors(bank_msb, bank_lsb, pc)
+            self.light_guide.send_colors(bank_msb, bank_lsb, pc)
 
 
 try:
