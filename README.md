@@ -14,6 +14,8 @@ Designed for live performance use with applications such as VST Live.
 - MIDI-driven song selection
 - YAML-based song and color definitions
 - Validation of YAML structure, MIDI ranges, duplicate definitions, and overlapping light ranges
+- Configuration is loaded and validated before device-sized song lookup tables are built
+- `Reload Song Colors` reloads both `colors.yaml` and `song_colors.yaml`
 - Supports named colors, RGB hex values and integer RGB values
 - Fast lookup using precompiled `(bank MSB, program)` mappings
 - Ideal for setlist-based live performances
@@ -215,7 +217,7 @@ RGB list channels must each resolve to an integer from `0` to `255`.
 | purple | 8000FF |
 | pink | FF40A0 |
 | lime | 80FF00 |
-| teal | 00FF80 |
+| teal | 00B0A0 |
 | sky | 40C0FF |
 | violet | FF00FF |
 | dimred | 400000 |
@@ -249,7 +251,9 @@ The bank LSB is currently unused and is treated as `0`.
 
 ## Runtime Errors
 
-Unknown MIDI patches are non-fatal: the current song and lights remain unchanged and the status bar shows a warning. Invalid configuration, MIDI input failures, and keyboard failures show an error status and disable device-dependent operation.
+Unknown MIDI patches are non-fatal: the current song and lights remain unchanged and the status bar shows a warning.
+
+Invalid configuration, MIDI input failures, and keyboard failures show an error status. `Reload Song Colors` remains enabled regardless of keyboard availability so configuration can be corrected and retried.
 
 ## Running
 
