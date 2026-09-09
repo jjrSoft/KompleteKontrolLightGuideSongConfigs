@@ -18,8 +18,14 @@ VERSION = "v1.0"
 TITLE = "Komplete Kontrol LightGuide Manager GUI"
 
 if getattr(sys, 'frozen', False):
-    # Running as PyInstaller executable
-    APPDIR = Path(sys.executable).parent
+    executable_dir = Path(sys.executable).resolve().parent
+    bundle_dir = executable_dir.parent.parent
+    if bundle_dir.suffix == ".app":
+        # External configuration lives beside the macOS application bundle.
+        APPDIR = bundle_dir.parent
+    else:
+        # Running as a standalone executable directory.
+        APPDIR = executable_dir
 else:
     # Running from source
     APPDIR = Path(__file__).resolve().parent
@@ -835,7 +841,7 @@ class LightGuideGuiApp:
             return
 
         self.error_window = tk.Toplevel(self.root)
-        self.error_window.title("Validation Errors")
+        self.error_window.title("Errors")
         self.error_window.geometry("640x360")
         self.error_window.protocol("WM_DELETE_WINDOW", self.close_validation_errors)
 

@@ -257,11 +257,13 @@ Invalid configuration, MIDI input failures, and keyboard failures show an error 
 
 ## Running
 
+Place `colors.yaml` and `song_colors.yaml` beside `komplete_lightguide.py` before running from source. The application loads both files from that directory.
+
 ```bash
 python komplete_lightguide.py
 ```
 
-The script uses the `song_colors.yaml` and `colors.yaml` files beside it. 
+For a bundled macOS application, place both YAML files beside the generated `.app` bundle or executable as described below.
 
 ## Building a Standalone Executable
 
@@ -277,19 +279,13 @@ Build:
 pyinstaller komplete_lightguide.spec
 ```
 
-For the terminal build, use:
-
-```bash
-pyinstaller komplete_lightguide_terminal.spec
-```
-
 Executable will be found in:
 
 ```text
 dist/
 ```
 
-At this stage, the yaml files will need to be in the same place as the executable.
+The generated app uses `komplete_lightguide.icns` for its macOS icon. Place `colors.yaml` and `song_colors.yaml` beside the generated application or executable; they are external configuration files and are not embedded in the bundle.
 
 ## Install Standalone Executable
 
@@ -312,23 +308,17 @@ cd ~/Applications/KompleteLightGuide
 
 This way you can start the app from Launchpad like everything else.
 
-To change the icon, for an Automator-created .app, the easiest way is Finder's built-in icon replacement:
+The generated PyInstaller app bundle includes the icon. If an Automator launcher wraps the executable, set the same icon on the outer Automator `.app` as well, because macOS displays the launcher's icon in Launchpad and the Dock.
 
-1. Find an image you want to use (PNG works fine).
-2. Open it in Preview.
-3. Press ⌘A, then ⌘C.
-4. In Finder, select your ```Komplete Light Guide.app``` (in ```/Applications``` folder)
-5. Press ⌘I (Get Info).
-6. Click the tiny app icon in the upper-left corner of the Info window.
-7. Press ⌘V.
+1. Open the Automator application in Finder and press ⌘I.
+2. Click the small icon in the upper-left corner of the Info window.
+3. Paste the icon or assign `komplete_lightguide.icns` to the launcher bundle.
 
 The app immediately gets the new icon.
 
 For a more polished macOS look, convert your image to a square 512×512 or 1024×1024 PNG first.
 
 One caveat: if you later recreate the Automator application, the icon may revert and you'll need to paste it again. For a permanent custom icon, you'd eventually embed an .icns file inside a real app bundle, but for a personal utility the Finder method is by far the quickest.
-
-**Missing:** The dock icon still does not show the icon we just pasted.
 
 ## Credits
 
