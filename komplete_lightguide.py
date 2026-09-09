@@ -305,11 +305,7 @@ class LightGuide:
             with open(self.song_colors_file, "r") as f:
                 song_colors_text = f.read()
         except OSError:
-            self.songColorsByPC, self.songLookup = None, None
-            self.configuration_valid = False
-            self.validation_errors = []
-            self.set_validation_errors([])
-            self.set_status(
+            self._song_configuration_error(
                 Status.ERROR,
                 f"Cannot read song colors file: {Path(self.song_colors_file).name}",
                 str(Path(self.song_colors_file).resolve()),
@@ -320,10 +316,6 @@ class LightGuide:
         try:
             self.songColors = yaml.safe_load(song_colors_text)
         except yaml.YAMLError as ex:
-            self.songColorsByPC, self.songLookup = None, None
-            self.configuration_valid = False
-            self.validation_errors = []
-            self.set_validation_errors([])
             location = ""
             if getattr(ex, "problem_mark", None) is not None:
                 mark = ex.problem_mark
@@ -346,7 +338,7 @@ class LightGuide:
                     )
             if str(ex):
                 details += f"\n{ex}"
-            self.set_status(
+            self._song_configuration_error(
                 Status.ERROR,
                 f"Invalid YAML in song colors file: {Path(self.song_colors_file).name}",
                 details,
@@ -357,11 +349,7 @@ class LightGuide:
         try:
             errors = SongColorsValidator(self.colorTable).validate(self.songColors)
         except Exception:
-            self.songColorsByPC, self.songLookup = None, None
-            self.configuration_valid = False
-            self.validation_errors = []
-            self.set_validation_errors([])
-            self.set_status(
+            self._song_configuration_error(
                 Status.ERROR,
                 f"Cannot validate song colors file: {Path(self.song_colors_file).name}",
                 str(Path(self.song_colors_file).resolve()),
@@ -372,9 +360,7 @@ class LightGuide:
         self.validation_errors = errors
         self.set_validation_errors(errors)
         if errors:
-            self.songColorsByPC, self.songLookup = None, None
-            self.configuration_valid = False
-            self.set_status(
+            self._song_configuration_error(
                 Status.ERROR,
                 "Errors found in song colors config.",
                 None,
@@ -389,11 +375,7 @@ class LightGuide:
         try:
             self.songColorsByPC, self.songLookup = self.create_lookup_tables(self.songColors)
         except Exception as ex:
-            self.songColorsByPC, self.songLookup = None, None
-            self.configuration_valid = False
-            self.validation_errors = []
-            self.set_validation_errors([])
-            self.set_status(
+            self._song_configuration_error(
                 Status.ERROR,
                 f"Cannot build song colors file: {Path(self.song_colors_file).name}",
                 str(Path(self.song_colors_file).resolve()),
@@ -403,6 +385,13 @@ class LightGuide:
 
         self.configuration_valid = True
         self.set_status(Status.OK, "OK", None, "")
+
+    def _song_configuration_error(self, status, message, details, link_text):
+        self.songColorsByPC, self.songLookup = None, None
+        self.configuration_valid = False
+        self.validation_errors = []
+        self.set_validation_errors([])
+        self.set_status(status, message, details, link_text)
 
     def load_color_table(self):
         try:
@@ -725,7 +714,19 @@ class LightGuideGuiApp:
         self.status_details = []
         self.status_details_label = "Show full path"
 
-        # Widgets are added here
+        self._build_widgets()
+
+        self.lightGuide = LightGuide(
+            songColorsYaml,
+            self.set_status,
+            self.set_validation_errors,
+            self.set_device_available
+        )
+        self.set_device_available(self.lightGuide.device_available)
+        self._start_midi_monitor()
+        self.root.mainloop()
+
+    def _build_widgets(self):
         self.root.minsize(500, 120)
         self.root.maxsize(500, 120)
         self.root.geometry("500x120+50+50")
@@ -767,13 +768,7 @@ class LightGuideGuiApp:
         self.errorButton.pack_forget()
         self.set_status(Status.NONE, "Loading...", None, "")
 
-        self.lightGuide = LightGuide(
-            songColorsYaml,
-            self.set_status,
-            self.set_validation_errors,
-            self.set_device_available
-        )
-        self.set_device_available(self.lightGuide.device_available)
+    def _start_midi_monitor(self):
         if self.lightGuide.device_available and self.lightGuide.configuration_valid:
             self.midiMonitor = MidiMonitor(
                 self.lightGuide,
@@ -787,8 +782,6 @@ class LightGuideGuiApp:
             self.midi_thread.start()
         else:
             self.midiMonitor = None
-
-        self.root.mainloop()
 
     def set_device_available(self, available):
         self.reloadButton.config(state=tk.NORMAL if available else tk.DISABLED)
@@ -881,7 +874,6 @@ class LightGuideGuiApp:
                 text=f"{title}"
             )
 
-
     def set_song(self, bankMsb, bankLsb, pc, title):
         self.root.after(
             0,
@@ -917,7 +909,6 @@ class LightGuideGuiApp:
             # we have a song loaded, so we need to re-send the colors for it
             self.set_song(bank_msb, bank_lsb, pc, title)
             self.lightGuide.send_colors(bank_msb, bank_lsb, pc)
-
 
 
 try:
