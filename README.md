@@ -36,6 +36,8 @@ The application detects these USB HID product IDs automatically:
 
 MK1 keyboards use RGB Light Guide packets. MK2 keyboards use the MK2 per-key packet protocol and the built-in color mapping.
 
+__Note:__ Only S61 MK1 tested in real life. Other configurations based on https://github.com/ojacques/SynthesiaKontrol/blob/master/SynthesiaKontrol.py.
+
 ## How It Works
 
 ```text
