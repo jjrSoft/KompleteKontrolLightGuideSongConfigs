@@ -739,6 +739,14 @@ class LightGuideGuiApp:
         self.reload_button = tk.Button(self.root, text="Reload Song Colors", command=self.reload_colors)
         self.reload_button.pack()
 
+        self.copyright_label = tk.Label(
+            self.root,
+            text="© JJRSoft",
+            font=("Helvetica", 8),
+            fg="#666666"
+        )
+        self.copyright_label.pack()
+
         self.status_var = tk.StringVar(value="Initializing")
         self.footer = tk.Frame(self.root)
         self.footer.pack(side="bottom", fill="x")
