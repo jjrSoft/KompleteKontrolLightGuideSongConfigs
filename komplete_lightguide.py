@@ -777,7 +777,7 @@ class LightGuideGuiApp:
             self.midi_monitor = None
 
     def set_device_available(self, available):
-        self.reload_button.config(state=tk.NORMAL if available else tk.DISABLED)
+        self.device_available = available
 
     def set_status(self, status: Status, message: str, details, link_text):
         self.status_details = [details] if details else []
