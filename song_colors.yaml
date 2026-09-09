@@ -1,6 +1,8 @@
 # Note: PC are 0-based here (raw midi) but often shown 1-based like in VSTLive
 
-middleC: C4
+# VSTLive names MIDI note 60 as C3.
+# If missing, middle C is assumed to be C4.
+middleC: C3
 
 banks:
 

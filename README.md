@@ -117,7 +117,9 @@ Example:
 
 ```yaml
 # comments are supported
-middleC: C4
+# VSTLive convention: MIDI note 60 is C3 unlike the typical C4.
+# C4 is omitted if this entry does not exist.
+middleC: C3
 
 banks:
 
@@ -146,7 +148,7 @@ banks:
           C5-C5: red
 ```
 
-`pc` and `msb` values are zero-based MIDI values from `0` to `127`. `middleC` defines the octave convention used when converting note names to MIDI numbers. Light ranges must resolve to MIDI `0` through `127`; the lower and upper endpoints are inclusive.
+`pc` and `msb` values are zero-based MIDI values from `0` to `127`. `middleC` defines the octave convention used when converting note names to MIDI numbers. The sample uses VSTLive's convention, where MIDI note 60 is `C3`; use `C4` instead for Scientific Pitch Notation. Light ranges must resolve to MIDI `0` through `127`; the lower and upper endpoints are inclusive.
 
 ## Supported Color Formats
 

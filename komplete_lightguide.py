@@ -506,10 +506,12 @@ class LightGuide:
 
     def note_to_midi(self, note):
         """
+        With the default Scientific Pitch convention:
         C4 -> 60
         A4 -> 69
 
-        Parameterized octave convention:
+        The configured middle_c value selects the octave convention, for
+        example VSTLive uses C3 for MIDI note 60:
         midi = (octave + 1) * 12 + semitone
         """
 
