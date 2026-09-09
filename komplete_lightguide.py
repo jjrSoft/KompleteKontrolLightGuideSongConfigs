@@ -14,6 +14,9 @@ from tkinter import messagebox
 from enum import Enum
 import traceback
 
+VERSION = "v1.0"
+TITLE = "Komplete Kontrol LightGuide Manager GUI"
+
 dbg = False
 
 if getattr(sys, 'frozen', False):
@@ -730,7 +733,7 @@ class LightGuideGuiApp:
         self.root.minsize(500, 120)
         self.root.maxsize(500, 120)
         self.root.geometry("500x120+50+50")
-        self.root.title("Komplete Kontrol LightGuide Manager GUI")
+        self.root.title(TITLE + " " + VERSION)
 
         self.current_patch = tk.Label(self.root, text="No patch")
         self.current_patch.pack()
