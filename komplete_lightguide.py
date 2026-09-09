@@ -1,4 +1,8 @@
 #!/usr/bin/env/python3
+#
+# Keyboard profiles and Light Guide protocol details were informed by:
+# Olivier Jacques, Synthesia Kontrol
+# https://github.com/ojacques/SynthesiaKontrol/blob/master/SynthesiaKontrol.py
 
 from pathlib import Path
 from logging import debug

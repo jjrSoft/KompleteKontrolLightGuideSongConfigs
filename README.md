@@ -334,4 +334,4 @@ This project extends those discoveries with song-based Light Guide control for l
 
 ## License
 
-MIT License
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
