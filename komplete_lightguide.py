@@ -26,7 +26,17 @@ else:
 colorsYaml = APPDIR / "colors.yaml"
 songColorsYaml = APPDIR / "song_colors.yaml"
 
-keycount = 61
+NATIVE_INSTRUMENTS = 0x17cc
+
+KEYBOARDS = {
+    0x1620: {"name": "Komplete Kontrol S61 MK2", "mode": "MK2", "keys": 61, "offset": -36, "first_note": "C1"},
+    0x1630: {"name": "Komplete Kontrol S88 MK2", "mode": "MK2", "keys": 88, "offset": -21, "first_note": "A0"},
+    0x1610: {"name": "Komplete Kontrol S49 MK2", "mode": "MK2", "keys": 49, "offset": -36, "first_note": "C1"},
+    0x1360: {"name": "Komplete Kontrol S61 MK1", "mode": "MK1", "keys": 61, "offset": -36, "first_note": "C1"},
+    0x1410: {"name": "Komplete Kontrol S88 MK1", "mode": "MK1", "keys": 88, "offset": -21, "first_note": "A0"},
+    0x1350: {"name": "Komplete Kontrol S49 MK1", "mode": "MK1", "keys": 49, "offset": -36, "first_note": "C1"},
+    0x1340: {"name": "Komplete Kontrol S25 MK1", "mode": "MK1", "keys": 25, "offset": -21, "first_note": "C1"},
+}
 
 NOTES = {
     'C': 0,
@@ -264,6 +274,10 @@ class LightGuide:
         self.configuration_valid = False
         self.device_available = False
         self.middle_c = "C4"
+        self.keyboard = None
+        self.keycount = 0
+        self.note_offset = 24
+        self.mode = "MK1"
 
         try:
             self.colorTable = ColorTable(colorsYaml)
@@ -275,10 +289,10 @@ class LightGuide:
             )
             return
 
+        self.device_available = self.connect()
         self.load_song_colors()
-
-        if self.configuration_valid:
-            self.device_available = self.connect()
+        if not self.device_available:
+            self.set_status(Status.ERROR, "Komplete Kontrol keyboard unavailable.")
 
     def load_song_colors(self):
         try:
@@ -319,6 +333,9 @@ class LightGuide:
             return
 
         self.middle_c = self.songColors.get("middleC", "C4")
+        if self.keyboard is not None:
+            self.note_offset = self.note_to_midi(self.keyboard["first_note"])
+
         try:
             self.songColorsByPC, self.songLookup = self.create_lookup_tables(self.songColors)
         except Exception as ex:
@@ -346,7 +363,11 @@ class LightGuide:
 
             for song in bank["songs"]:
                 program = int(song["pc"])
-                preset_lookup[(bank_msb, bank_lsb, program)] = self.parse_light_map(song["lights"], numkeys=keycount, offset=24)
+                preset_lookup[(bank_msb, bank_lsb, program)] = self.parse_light_map(
+                    song["lights"],
+                    numkeys=self.keycount,
+                    offset=self.note_offset
+                )
                 song_lookup[(bank_msb, bank_lsb, program)] = song["title"]
 
         return preset_lookup, song_lookup
@@ -372,17 +393,20 @@ class LightGuide:
         # for phase in range(256):    #768):
         #     color = wheel(phase)
         #     r, g, b = color
-        #     h.write([0x82] + [r, g, b]*(keycount))
+        #     h.write([0x82] + [r, g, b] * self.keycount)
         #     time.sleep(0.0001)
 
-        h.write([0x82] + [60, 60, 255]*(keycount))  # turn off all keys
+        if self.mode == "MK2":
+            h.write([0x81] + [0] * self.keycount)
+        else:
+            h.write([0x82] + [60, 60, 255] * self.keycount)
 
     def connect(self):
-        VID = 0x17cc
-        PID = 0x1360
-
         try:
-            devices = hid.enumerate(VID, PID)
+            devices = [
+                device for device in hid.enumerate(NATIVE_INSTRUMENTS)
+                if device.get("product_id") in KEYBOARDS
+            ]
             if not devices:
                 self.set_device_available(False)
                 self.set_status(
@@ -391,12 +415,18 @@ class LightGuide:
                 )
                 return False
 
+            product_id = devices[0]["product_id"]
+            self.keyboard = KEYBOARDS[product_id]
+            self.keycount = self.keyboard["keys"]
+            self.note_offset = self.note_to_midi(self.keyboard["first_note"])
+            self.mode = self.keyboard["mode"]
+
             if dbg:
                 print("Found Komplete Kontrol device!")
-                print(devices[0])
+                print(self.keyboard["name"])
 
             self.hid_device = hid.device()
-            self.hid_device.open(VID, PID) # 6092, 4960 = 0x1360. // was 0x1410
+            self.hid_device.open(NATIVE_INSTRUMENTS, product_id)
 
             # initialize device
             self.hid_device.write([0xa0, 0x00, 0x00])
@@ -509,7 +539,11 @@ class LightGuide:
             return False
 
         try:
-            self.hid_device.write([0x82] + colors)
+            if self.mode == "MK2":
+                packet = [0x81] + self._to_mk2_colors(colors)
+            else:
+                packet = [0x82] + colors
+            self.hid_device.write(packet)
         except Exception as ex:
             self.hid_device = None
             self.device_available = False
@@ -519,6 +553,23 @@ class LightGuide:
 
         self.set_status(Status.OK, "OK")
         return True
+
+    def _to_mk2_colors(self, colors):
+        palette = {
+            (0, 0, 0): 0x00,
+            (255, 0, 0): 0x0D,
+            (0, 255, 0): 0x1D,
+            (0, 0, 255): 0x2D,
+            (255, 255, 255): 0x3D,
+        }
+        result = []
+        for position in range(0, len(colors), 3):
+            rgb = tuple(colors[position:position + 3])
+            if rgb in palette:
+                result.append(palette[rgb])
+            else:
+                result.append(0x00 if rgb == (0, 0, 0) else 0x2D)
+        return result
 
 class MidiMonitor:
     port_name = "IAC Driver KompleteLightGuide"
@@ -640,7 +691,7 @@ class LightGuideGuiApp:
             self.set_validation_errors,
             self.set_device_available
         )
-        if self.lightGuide.device_available:
+        if self.lightGuide.device_available and self.lightGuide.configuration_valid:
             self.midiMonitor = MidiMonitor(
                 self.lightGuide,
                 self.set_song,
