@@ -49,6 +49,13 @@ KEYBOARDS = {
     0x1340: {"name": "Komplete Kontrol S25 MK1", "mode": "MK1", "keys": 25, "offset": -21, "first_note": "C1"},
 }
 
+def connected_keyboards():
+    return [
+        device for device in hid.enumerate(NATIVE_INSTRUMENTS)
+        if device.get("product_id") in KEYBOARDS
+    ]
+
+
 NOTES = {
     'C': 0,
     'C#': 1, 'Db': 1,
@@ -63,7 +70,6 @@ NOTES = {
     'A#': 10, 'Bb': 10,
     'B': 11,
 }
-
 
 
 class ColorTable:
@@ -476,10 +482,7 @@ class LightGuide:
 
     def connect(self):
         try:
-            devices = [
-                device for device in hid.enumerate(NATIVE_INSTRUMENTS)
-                if device.get("product_id") in KEYBOARDS
-            ]
+            devices = connected_keyboards()
             if not devices:
                 self.set_device_available(False)
                 self.set_status(
@@ -737,6 +740,12 @@ class LightGuideGuiApp:
         self.root.geometry("500x120+50+50")
         self.root.title(TITLE + " " + VERSION)
 
+        self.menu_bar = tk.Menu(self.root)
+        self.synths_menu = tk.Menu(self.menu_bar, tearoff=False)
+        self.menu_bar.add_cascade(label="Connected Synths", menu=self.synths_menu)
+        self.root.config(menu=self.menu_bar)
+        self.refresh_synths_menu()
+
         self.current_patch = tk.Label(self.root, text="No patch")
         self.current_patch.pack()
         self.current_song_label = tk.Label(self.root, text="No song loaded", font=("Helvetica", 16, "bold"))
@@ -780,6 +789,34 @@ class LightGuideGuiApp:
         self.error_button.bind("<Button-1>", lambda event: self.show_validation_errors())
         self.error_button.pack_forget()
         self.set_status(Status.NONE, "Loading...", None, "")
+
+    def refresh_synths_menu(self):
+        self.synths_menu.delete(0, "end")
+        self.synths_menu.add_command(label="Refresh", command=self.refresh_synths_menu)
+        self.synths_menu.add_separator()
+        try:
+            devices = connected_keyboards()
+        except Exception as ex:
+            self.synths_menu.add_command(
+                label=f"Cannot enumerate keyboards: {ex}",
+                state="disabled"
+            )
+            return
+
+        if not devices:
+            self.synths_menu.add_command(
+                label="No supported keyboards connected",
+                state="disabled"
+            )
+            return
+
+        for device in devices:
+            keyboard = KEYBOARDS[device["product_id"]]
+            serial_number = device.get("serial_number") or "serial unavailable"
+            self.synths_menu.add_command(
+                label=f"{keyboard['name']} (serial {serial_number})",
+                state="disabled"
+            )
 
     def _start_midi_monitor(self):
         if self.light_guide.device_available and self.light_guide.configuration_valid:
