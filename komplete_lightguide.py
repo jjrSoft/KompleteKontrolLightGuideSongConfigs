@@ -148,6 +148,12 @@ class SongColorsValidator:
         return errors
 
     def _validate_song_metadata(self, data, errors):
+        self._validate_unknown_keys(
+            data,
+            {"middleC", "banks", "keyboards"},
+            "Top level",
+            errors
+        )
         if "banks" not in data and "keyboards" not in data:
             errors.append("Missing required top-level key: banks or keyboards")
 
@@ -167,6 +173,12 @@ class SongColorsValidator:
             if not isinstance(definition, dict):
                 errors.append(f"Keyboard #{keyboard_idx} definition must be a mapping")
                 continue
+            self._validate_unknown_keys(
+                definition,
+                {"model", "serial", "banks"},
+                f"Keyboard #{keyboard_idx}",
+                errors
+            )
             model = definition.get("model")
             product_id = keyboard_product_id(model)
             if model is None:
@@ -204,6 +216,9 @@ class SongColorsValidator:
         if not isinstance(banks, list):
             errors.append(f"{context}'banks' must be a list")
             return
+        if not banks:
+            errors.append(f"{context}'banks' must not be empty")
+            return
 
         definitions = set()
         for bank_idx, bank in enumerate(banks, start=1):
@@ -213,6 +228,13 @@ class SongColorsValidator:
         if not isinstance(bank, dict):
             errors.append(f"Bank #{bank_idx} must be a mapping")
             return
+
+        self._validate_unknown_keys(
+            bank,
+            {"bank", "msb", "songs"},
+            f"Bank #{bank_idx}",
+            errors
+        )
 
         bank_name = bank.get("bank", f"#{bank_idx}")
         if not isinstance(bank_name, str) or not bank_name.strip():
@@ -227,6 +249,9 @@ class SongColorsValidator:
         if not isinstance(songs, list):
             errors.append(f"Bank {bank_name} 'songs' must be a list")
             return
+        if not songs:
+            errors.append(f"Bank {bank_name} 'songs' must not be empty")
+            return
 
         for song_idx, song in enumerate(songs, start=1):
             self._validate_song(song, bank_name, song_idx, errors, msb, definitions)
@@ -236,7 +261,14 @@ class SongColorsValidator:
             errors.append(f"Bank {bank_name} song #{song_idx} must be a mapping")
             return
 
-        title = song.get("title", f"#{song_idx}")
+        self._validate_unknown_keys(
+            song,
+            {"title", "pc", "lights"},
+            f"Bank {bank_name} song #{song_idx}",
+            errors
+        )
+
+        title = song.get("title")
         if not isinstance(title, str) or not title.strip():
             errors.append(f"Bank {bank_name} song #{song_idx} 'title' must be a non-empty string")
             title = f"#{song_idx}"
@@ -251,6 +283,9 @@ class SongColorsValidator:
         if not isinstance(lights, dict):
             errors.append(f"Bank {bank_name} PC {pc} 'lights' must be a mapping")
             return
+        if not lights:
+            errors.append(f"Bank {bank_name} PC {pc} 'lights' must not be empty")
+            return
 
         light_ranges = []
         for note_range, color in lights.items():
@@ -262,6 +297,10 @@ class SongColorsValidator:
                 errors,
                 light_ranges
             )
+
+    def _validate_unknown_keys(self, data, allowed_keys, context, errors):
+        for key in data.keys() - allowed_keys:
+            errors.append(f"{context} has an unknown key: {key}")
 
     def _validate_light(self, note_range, color, bank_name, pc, errors, light_ranges):
         range_pattern = r'^([A-G][#b]?-?\d+)\s*-\s*([A-G][#b]?-?\d+)$'
@@ -344,7 +383,7 @@ class SongColorsValidator:
                 return len(color.lstrip("#")) == 6 and int(color.lstrip("#"), 16) >= 0
             except ValueError:
                 return False
-        if isinstance(color, int):
+        if isinstance(color, int) and not isinstance(color, bool):
             return 0 <= color <= 0xFFFFFF
         return (isinstance(color, list)
                 and len(color) == 3
@@ -461,11 +500,11 @@ class LightGuide:
         self.set_status(Status.OK, "OK", None, "")
 
     def build_song_colors(self):
-        duplicate_errors = self._duplicate_keyboard_definition_errors()
-        if duplicate_errors:
-            self.validation_errors = duplicate_errors
+        keyboard_definition_errors = self._keyboard_definition_errors()
+        if keyboard_definition_errors:
+            self.validation_errors = keyboard_definition_errors
             self.configuration_valid = False
-            self.set_validation_errors(duplicate_errors)
+            self.set_validation_errors(keyboard_definition_errors)
             self.set_status(
                 Status.ERROR,
                 "Errors found in song colors config.",
@@ -542,7 +581,7 @@ class LightGuide:
                 model_definition = definition
         return model_definition
 
-    def _duplicate_keyboard_definition_errors(self):
+    def _keyboard_definition_errors(self):
         keyboard_definitions = self.song_colors.get("keyboards")
         if keyboard_definitions is None:
             return []
@@ -569,6 +608,29 @@ class LightGuide:
                 errors.append(
                     f"Multiple connected {KEYBOARDS[product_id]['name']} keyboards "
                     "require serial numbers in song_colors.yaml"
+                )
+
+        for keyboard_idx, definition in enumerate(keyboard_definitions, start=1):
+            model = definition.get("model")
+            serial_number = definition.get("serial")
+            matching_devices = self.keyboard_devices
+            if model is not None:
+                product_id = keyboard_product_id(model)
+                matching_devices = [
+                    device for device in matching_devices
+                    if device["product_id"] == product_id
+                ]
+                if not matching_devices:
+                    errors.append(
+                        f"Keyboard #{keyboard_idx} model {model} is not connected"
+                    )
+                    continue
+            if serial_number is not None and not any(
+                    device.get("serial_number") == serial_number
+                    for device in matching_devices):
+                errors.append(
+                    f"Keyboard #{keyboard_idx} serial {serial_number} does not match "
+                    "a connected keyboard"
                 )
         return errors
 
