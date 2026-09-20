@@ -10,6 +10,7 @@ Designed for live performance use with applications such as VST Live.
 
 - Direct HID communication with supported Komplete Kontrol MK1 and MK2 keyboards
 - Automatic keyboard detection with per-model key counts and Light Guide protocols
+- Inline keyboard rows showing each connected model, serial number, and configuration status
 - No Komplete Kontrol software required
 - MIDI-driven song selection
 - YAML-based song and color definitions
@@ -127,8 +128,7 @@ middleC: C3
 
 banks:
 
-  - bank: Main Set
-    msb: 0
+  - msb: 0
 
     songs:
 
@@ -153,6 +153,47 @@ banks:
 ```
 
 `pc` and `msb` values are zero-based MIDI values from `0` to `127`. `middleC` defines the octave convention used when converting note names to MIDI numbers. The sample uses VSTLive's convention, where MIDI note 60 is `C3`; use `C4` instead for Scientific Pitch Notation. Light ranges must resolve to MIDI `0` through `127`; the lower and upper endpoints are inclusive.
+
+### Multiple Keyboards
+
+Root-level `banks` are a shared default applied to every connected keyboard. Add `keyboards` entries only where a model or serial number needs a different map; a matching entry overrides the shared default. When more than one supported keyboard needs distinct maps, configure each entry by model name and add a serial number for duplicate models. When the configuration has one keyboard entry, `model` may be omitted.
+
+```yaml
+middleC: C3
+
+keyboards:
+  - model: S88 MK1
+    banks:
+      - msb: 0
+        songs:
+          - title: Song A
+            pc: 1
+            lights:
+              C1-C3: blue
+
+  - model: S61 MK1
+    serial: "6C0811AD"
+    banks:
+      - msb: 0
+        songs:
+          - title: Song A
+            pc: 1
+            lights:
+              C1-C3: red
+
+  # A second S61 MK1 needs its own serial number.
+  - model: S61 MK1
+    serial: "ANOTHER_S61_SERIAL"
+    banks:
+      - msb: 0
+        songs:
+          - title: Song A
+            pc: 1
+            lights:
+              C1-C3: yellow
+```
+
+The application lists each connected model and serial number above the footer. A green `OK` badge means a matching definition exists; a yellow badge means that keyboard has no definition. Root-level `banks` is a shared default for every connected keyboard, not only a single keyboard.
 
 ## Supported Color Formats
 

@@ -980,6 +980,9 @@ class LightGuideGuiApp:
         )
         self.copyright_label.pack()
 
+        self.synth_rows = tk.Frame(self.root)
+        self.synth_rows.pack(fill="x", padx=4, pady=(0, 4))
+
         self.status_var = tk.StringVar(value="Initializing")
         self.footer = tk.Frame(self.root)
         self.footer.pack(side="bottom", fill="x")
@@ -1008,33 +1011,52 @@ class LightGuideGuiApp:
         self.error_button.pack_forget()
         self.set_status(Status.NONE, "Loading...", None, "")
 
-    def refresh_synths_menu(self):
-        self.synths_menu.delete(0, "end")
-        self.synths_menu.add_command(label="Refresh", command=self.refresh_synths_menu)
-        self.synths_menu.add_separator()
+    def _schedule_synth_row_refresh(self):
+        self.refresh_synth_rows()
+        self.root.after(1000, self._schedule_synth_row_refresh)
+
+    def refresh_synth_rows(self):
+        for row in self.synth_rows.winfo_children():
+            row.destroy()
         try:
             devices = connected_keyboards()
         except Exception as ex:
-            self.synths_menu.add_command(
-                label=f"Cannot enumerate keyboards: {ex}",
-                state="disabled"
-            )
-            return
+            devices = []
 
-        if not devices:
-            self.synths_menu.add_command(
-                label="No supported keyboards connected",
-                state="disabled"
-            )
-            return
-
-        for device in devices:
+        for device in sorted(
+            devices,
+            key=lambda item: (
+                KEYBOARDS[item["product_id"]]["name"],
+                item.get("serial_number") or ""
+            )):
             keyboard = KEYBOARDS[device["product_id"]]
             serial_number = device.get("serial_number") or "serial unavailable"
-            self.synths_menu.add_command(
-                label=f"{keyboard['name']} (serial {serial_number})",
-                state="disabled"
+            definition_exists = (
+                hasattr(self, "light_guide")
+                and self.light_guide.has_definition_for_device(device)
             )
+            row = tk.Frame(self.synth_rows, bg=STATUS_COLORS[Status.NONE])
+            row.pack(fill="x", pady=1)
+            tk.Label(
+                row,
+                text=f"{keyboard['name']} (serial {serial_number})",
+                anchor="w",
+                background=STATUS_COLORS[Status.NONE],
+                padx=8,
+                pady=4
+            ).pack(side="left", fill="x", expand=True)
+            tk.Label(
+                row,
+                text="OK" if definition_exists else "No keyboard-specific definition",
+                background=STATUS_COLORS[
+                    Status.OK if definition_exists else Status.WARNING
+                ],
+                padx=8,
+                pady=4
+            ).pack(side="right")
+
+        self.root.update_idletasks()
+        self.root.geometry(f"500x{max(120, self.root.winfo_reqheight())}")
 
     def _start_midi_monitor(self):
         if self.light_guide.device_available and self.light_guide.configuration_valid:
@@ -1163,6 +1185,8 @@ class LightGuideGuiApp:
         else:
             return
 
+        self.refresh_synth_rows()
+
         if self.midi_monitor is None and self.light_guide.device_available:
             self.midi_monitor = MidiMonitor(
                 self.light_guide,
@@ -1185,9 +1209,10 @@ class LightGuideGuiApp:
             self.light_guide.send_colors(bank_msb, bank_lsb, pc)
 
 
-try:
-    LightGuideGuiApp()
-except Exception:
-    traceback.print_exc()
+if __name__ == "__main__":
+    try:
+        LightGuideGuiApp()
+    except Exception:
+        traceback.print_exc()
 
 
