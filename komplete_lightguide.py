@@ -55,6 +55,20 @@ def connected_keyboards():
         if device.get("product_id") in KEYBOARDS
     ]
 
+def keyboard_product_id(value):
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value, 0)
+        except ValueError:
+            model_name = " ".join(value.split()).casefold()
+            for product_id, keyboard in KEYBOARDS.items():
+                short_name = keyboard["name"].replace("Komplete Kontrol ", "")
+                if model_name == short_name.casefold():
+                    return product_id
+    return None
+
 
 NOTES = {
     'C': 0,
@@ -125,21 +139,70 @@ class SongColorsValidator:
 
         self.middle_c = data.get("middleC", "C4")
         self._validate_song_metadata(data, errors)
-        self._validate_banks(data.get("banks"), errors)
+        if "banks" in data:
+            self._validate_banks(data["banks"], errors, "Default ")
+        if "keyboards" in data:
+            self._validate_keyboard_definitions(data["keyboards"], errors)
+        elif "banks" not in data:
+            self._validate_banks(data.get("banks"), errors)
         return errors
 
     def _validate_song_metadata(self, data, errors):
-        if "banks" not in data:
-            errors.append("Missing required top-level key: banks")
+        if "banks" not in data and "keyboards" not in data:
+            errors.append("Missing required top-level key: banks or keyboards")
 
         middle_c = data.get("middleC")
         if middle_c is not None and not self._valid_note(middle_c):
             errors.append("'middleC' must be a valid note, such as C4")
             self.middle_c = "C4"
 
-    def _validate_banks(self, banks, errors):
+    def _validate_keyboard_definitions(self, keyboards, errors):
+        if not isinstance(keyboards, list) or not keyboards:
+            errors.append("'keyboards' must be a non-empty list")
+            return
+
+        models = {}
+        multiple_definitions = len(keyboards) > 1
+        for keyboard_idx, definition in enumerate(keyboards, start=1):
+            if not isinstance(definition, dict):
+                errors.append(f"Keyboard #{keyboard_idx} definition must be a mapping")
+                continue
+            model = definition.get("model")
+            product_id = keyboard_product_id(model)
+            if model is None:
+                if multiple_definitions:
+                    errors.append(
+                        f"Keyboard #{keyboard_idx} requires 'model' when multiple "
+                        "keyboard definitions are present"
+                    )
+            elif product_id not in KEYBOARDS:
+                errors.append(f"Keyboard #{keyboard_idx} has an unsupported model: {model}")
+            serial_number = definition.get("serial")
+            if serial_number is not None and (
+                    not isinstance(serial_number, str) or not serial_number.strip()):
+                errors.append(f"Keyboard #{keyboard_idx} 'serial' must be a non-empty string")
+            self._validate_banks(
+                definition.get("banks"),
+                errors,
+                f"Keyboard #{keyboard_idx} ({model}) "
+            )
+            if product_id in KEYBOARDS:
+                models.setdefault(product_id, []).append(serial_number)
+
+        for product_id, serial_numbers in models.items():
+            if len(serial_numbers) > 1 and any(serial is None for serial in serial_numbers):
+                errors.append(
+                    f"Multiple {KEYBOARDS[product_id]['name']} definitions require serial numbers"
+                )
+            configured_serials = [serial for serial in serial_numbers if serial is not None]
+            if len(configured_serials) != len(set(configured_serials)):
+                errors.append(
+                    f"Duplicate serial definition for {KEYBOARDS[product_id]['name']}"
+                )
+
+    def _validate_banks(self, banks, errors, context=""):
         if not isinstance(banks, list):
-            errors.append("'banks' must be a list")
+            errors.append(f"{context}'banks' must be a list")
             return
 
         definitions = set()
@@ -308,6 +371,7 @@ class LightGuide:
         self.keycount = 0
         self.note_offset = 24
         self.mode = "MK1"
+        self.keyboard_devices = []
 
         if not self.load_color_table():
             return
@@ -397,8 +461,37 @@ class LightGuide:
         self.set_status(Status.OK, "OK", None, "")
 
     def build_song_colors(self):
+        duplicate_errors = self._duplicate_keyboard_definition_errors()
+        if duplicate_errors:
+            self.validation_errors = duplicate_errors
+            self.configuration_valid = False
+            self.set_validation_errors(duplicate_errors)
+            self.set_status(
+                Status.ERROR,
+                "Errors found in song colors config.",
+                None,
+                "View Validation Errors"
+            )
+            return False
+
         try:
-            self.song_colors_by_pc, self.song_lookup = self.create_lookup_tables(self.song_colors)
+            self.song_colors_by_pc, self.song_lookup = None, None
+            for keyboard_device in self.keyboard_devices:
+                device_song_colors = self._song_colors_for_device(keyboard_device)
+                if device_song_colors is None:
+                    keyboard_device["song_colors_by_pc"] = None
+                    keyboard_device["song_lookup"] = None
+                    continue
+                preset_lookup, song_lookup = self.create_lookup_tables(
+                    device_song_colors,
+                    keyboard_device["keycount"],
+                    keyboard_device["note_offset"]
+                )
+                keyboard_device["song_colors_by_pc"] = preset_lookup
+                keyboard_device["song_lookup"] = song_lookup
+                if self.song_colors_by_pc is None:
+                    self.song_colors_by_pc = preset_lookup
+                    self.song_lookup = song_lookup
         except Exception as ex:
             self._song_configuration_error(
                 Status.ERROR,
@@ -409,6 +502,75 @@ class LightGuide:
             return False
 
         return True
+
+    def _song_colors_for_device(self, keyboard_device):
+        keyboard_definitions = self.song_colors.get("keyboards")
+        if keyboard_definitions is not None:
+            keyboard_definition = self._keyboard_definition_for_device(
+                keyboard_definitions,
+                keyboard_device
+            )
+            if keyboard_definition is not None:
+                return keyboard_definition
+        if "banks" in self.song_colors:
+            return self.song_colors
+        return None
+
+    def has_definition_for_device(self, device_info):
+        if not self.configuration_valid:
+            return False
+        return self._song_colors_for_device({
+            "product_id": device_info["product_id"],
+            "serial_number": device_info.get("serial_number"),
+        }) is not None
+
+    def _keyboard_definition_for_device(self, keyboard_definitions, keyboard_device):
+        model_definition = None
+        for definition in keyboard_definitions:
+            model = definition.get("model")
+            if model is None and len(keyboard_definitions) == 1:
+                if definition.get("serial") == keyboard_device["serial_number"]:
+                    return definition
+                if "serial" not in definition:
+                    model_definition = definition
+                continue
+            if keyboard_product_id(model) != keyboard_device["product_id"]:
+                continue
+            if definition.get("serial") == keyboard_device["serial_number"]:
+                return definition
+            if "serial" not in definition:
+                model_definition = definition
+        return model_definition
+
+    def _duplicate_keyboard_definition_errors(self):
+        keyboard_definitions = self.song_colors.get("keyboards")
+        if keyboard_definitions is None:
+            return []
+
+        errors = []
+        for product_id in {device["product_id"] for device in self.keyboard_devices}:
+            connected_devices = [
+                device for device in self.keyboard_devices
+                if device["product_id"] == product_id
+            ]
+            model_definitions = [
+                definition for definition in keyboard_definitions
+                if keyboard_product_id(definition.get("model")) == product_id
+            ]
+            has_generic_definition = any(
+                "serial" not in definition for definition in model_definitions
+            )
+            has_model_less_definition = (
+                len(keyboard_definitions) == 1
+                and "model" not in keyboard_definitions[0]
+            )
+            if len(connected_devices) > 1 and (
+                    has_generic_definition or has_model_less_definition):
+                errors.append(
+                    f"Multiple connected {KEYBOARDS[product_id]['name']} keyboards "
+                    "require serial numbers in song_colors.yaml"
+                )
+        return errors
 
     def _song_configuration_error(self, status, message, details, link_text):
         self.song_colors_by_pc, self.song_lookup = None, None
@@ -432,9 +594,11 @@ class LightGuide:
         self.color_table = color_table
         return True
 
-    def create_lookup_tables(self, song_colors):
+    def create_lookup_tables(self, song_colors, keycount=None, note_offset=None):
         preset_lookup = {}
         song_lookup = {}
+        keycount = self.keycount if keycount is None else keycount
+        note_offset = self.note_offset if note_offset is None else note_offset
 
         for bank in song_colors["banks"]:
             bank_msb = int(bank["msb"])
@@ -444,17 +608,20 @@ class LightGuide:
                 program = int(song["pc"])
                 preset_lookup[(bank_msb, bank_lsb, program)] = self.parse_light_map(
                     song["lights"],
-                    numkeys=self.keycount,
-                    offset=self.note_offset
+                    numkeys=keycount,
+                    offset=note_offset
                 )
                 song_lookup[(bank_msb, bank_lsb, program)] = song["title"]
 
         return preset_lookup, song_lookup
 
     def get_song_title(self, bank_msb, bank_lsb, program):
-        return self.song_lookup.get((bank_msb, bank_lsb, program), "Unknown Song")
+        return (self.song_lookup or {}).get(
+            (bank_msb, bank_lsb, program),
+            "Unknown Song"
+        )
 
-    def init_rainbow(self, h):
+    def init_rainbow(self, hid_device, mode=None, keycount=None):
         def wheel(pos):
             pos %= 768
 
@@ -475,10 +642,12 @@ class LightGuide:
         #     h.write([0x82] + [r, g, b] * self.keycount)
         #     time.sleep(0.0001)
 
-        if self.mode == "MK2":
-            self._write_hid([0x81] + [0] * self.keycount)
+        mode = self.mode if mode is None else mode
+        keycount = self.keycount if keycount is None else keycount
+        if mode == "MK2":
+            self._write_hid([0x81] + [0] * keycount, hid_device)
         else:
-            self._write_hid([0x82] + [60, 60, 255] * self.keycount)
+            self._write_hid([0x82] + [60, 60, 255] * keycount, hid_device)
 
     def connect(self):
         try:
@@ -493,23 +662,65 @@ class LightGuide:
                 )
                 return False
 
-            product_id = devices[0]["product_id"]
-            self.keyboard = KEYBOARDS[product_id]
-            self.keycount = self.keyboard["keys"]
-            self.note_offset = self.note_to_midi(self.keyboard["first_note"])
-            self.mode = self.keyboard["mode"]
+            self.keyboard_devices = []
+            connection_errors = []
+            for device_info in devices:
+                product_id = device_info["product_id"]
+                keyboard = KEYBOARDS[product_id]
+                label = self._device_label(device_info, keyboard)
+                hid_path = device_info.get("path")
+                if hid_path is None:
+                    connection_errors.append(f"{label}: HID path unavailable")
+                    continue
 
-            self.hid_device = hid.device()
-            self.hid_device.open(NATIVE_INSTRUMENTS, product_id)
+                try:
+                    hid_device = hid.device()
+                    hid_device.open_path(hid_path)
+                    self._write_hid([0xa0, 0x00, 0x00], hid_device)
+                    self.init_rainbow(hid_device, keyboard["mode"], keyboard["keys"])
+                    self.keyboard_devices.append({
+                        "hid_device": hid_device,
+                        "keyboard": keyboard,
+                        "product_id": product_id,
+                        "keycount": keyboard["keys"],
+                        "note_offset": self.note_to_midi(keyboard["first_note"]),
+                        "mode": keyboard["mode"],
+                        "label": label,
+                        "serial_number": device_info.get("serial_number"),
+                    })
+                except Exception as ex:
+                    connection_errors.append(f"{label}: {ex}")
 
-            # initialize device
-            self._write_hid([0xa0, 0x00, 0x00])
-            self.init_rainbow(self.hid_device)
+            if not self.keyboard_devices:
+                details = "\n".join(connection_errors) or None
+                self.set_device_available(False)
+                self.set_status(
+                    Status.ERROR,
+                    "Cannot connect to any Komplete Kontrol keyboard.",
+                    details,
+                    "Details" if details else ""
+                )
+                return False
+
+            first_device = self.keyboard_devices[0]
+            self.hid_device = first_device["hid_device"]
+            self.keyboard = first_device["keyboard"]
+            self.keycount = first_device["keycount"]
+            self.note_offset = first_device["note_offset"]
+            self.mode = first_device["mode"]
             self.device_available = True
             self.set_device_available(True)
+            if connection_errors:
+                self.set_status(
+                    Status.WARNING,
+                    "Some connected keyboards could not be initialized.",
+                    "\n".join(connection_errors),
+                    "Details"
+                )
             return True
         except Exception as ex:
             self.hid_device = None
+            self.keyboard_devices = []
             self.set_device_available(False)
             self.set_status(
                 Status.ERROR,
@@ -518,6 +729,12 @@ class LightGuide:
                 ""
             )
             return False
+
+    def _device_label(self, device_info, keyboard):
+        serial_number = device_info.get("serial_number")
+        if serial_number:
+            return f"{keyboard['name']} (serial {serial_number})"
+        return keyboard["name"]
 
     def note_to_midi(self, note):
         """
@@ -595,33 +812,38 @@ class LightGuide:
             return False
 
         key = (bank_msb, bank_lsb, pc)
-        if self.song_colors_by_pc is None:
-            self.set_status(Status.ERROR, "Song colors configuration is unavailable.", None, "")
-            return False
-        colors = self.song_colors_by_pc.get(key)
-        if colors is None:
-            self.set_status(
-                Status.WARNING,
-                f"Unknown song: bank {bank_msb}:{bank_lsb} — PC {pc}",
-                None,
-                ""
-            )
-            return False
-
-        if self.hid_device is None:
+        if not self.keyboard_devices:
             if not self.connect():
                 return False
             if not self.build_song_colors():
                 return False
 
+        targets = [
+            keyboard_device
+            for keyboard_device in self.keyboard_devices
+            if keyboard_device["song_colors_by_pc"] is not None
+            and key in keyboard_device["song_colors_by_pc"]
+        ]
+        if not targets:
+            self.set_status(
+                Status.WARNING,
+                f"No keyboard definition for bank {bank_msb}:{bank_lsb} — PC {pc}",
+                None,
+                ""
+            )
+            return False
+
         try:
-            if self.mode == "MK2":
-                packet = [0x81] + self._to_mk2_colors(colors)
-            else:
-                packet = [0x82] + colors
-            self._write_hid(packet)
+            for keyboard_device in targets:
+                colors = keyboard_device["song_colors_by_pc"].get(key)
+                if keyboard_device["mode"] == "MK2":
+                    packet = [0x81] + self._to_mk2_colors(colors)
+                else:
+                    packet = [0x82] + colors
+                self._write_hid(packet, keyboard_device["hid_device"])
         except Exception as ex:
             self.hid_device = None
+            self.keyboard_devices = []
             self.device_available = False
             self.set_device_available(False)
             self.set_status(Status.ERROR, f"Cannot send colors to keyboard: {ex}", None, "")
@@ -630,8 +852,9 @@ class LightGuide:
         self.set_status(Status.OK, "OK", None, "")
         return True
 
-    def _write_hid(self, packet):
-        written = self.hid_device.write(packet)
+    def _write_hid(self, packet, hid_device=None):
+        hid_device = self.hid_device if hid_device is None else hid_device
+        written = hid_device.write(packet)
         if written != len(packet):
             raise OSError(
                 f"keyboard accepted {written} of {len(packet)} bytes"
@@ -731,20 +954,15 @@ class LightGuideGuiApp:
             self.set_device_available
         )
         self.set_device_available(self.light_guide.device_available)
+        self.refresh_synth_rows()
         self._start_midi_monitor()
+        self._schedule_synth_row_refresh()
         self.root.mainloop()
 
     def _build_widgets(self):
         self.root.minsize(500, 120)
-        self.root.maxsize(500, 120)
         self.root.geometry("500x120+50+50")
         self.root.title(TITLE + " " + VERSION)
-
-        self.menu_bar = tk.Menu(self.root)
-        self.synths_menu = tk.Menu(self.menu_bar, tearoff=False)
-        self.menu_bar.add_cascade(label="Connected Synths", menu=self.synths_menu)
-        self.root.config(menu=self.menu_bar)
-        self.refresh_synths_menu()
 
         self.current_patch = tk.Label(self.root, text="No patch")
         self.current_patch.pack()

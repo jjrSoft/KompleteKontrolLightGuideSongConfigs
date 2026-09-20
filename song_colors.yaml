@@ -1,50 +1,98 @@
-# Note: PC are 0-based here (raw midi) but often shown 1-based like in VSTLive
+# `msb` and `pc` are raw MIDI values from 0 through 127. Hosts such as VSTLive
+# often display programs one-based.
 
 # VSTLive names MIDI note 60 as C3.
 # If missing, middle C is assumed to be C4.
 middleC: C3
 
-banks:
+# Root-level `banks` are a shared default applied to every connected keyboard.
+# When a matching keyboard entry exists below, its `banks` override the default.
+keyboards:
+  # When the keyboards list has only one entry, `model` is optional.
+  # When it has multiple entries, every entry requires `model`.
+  - model: S61 MK1
+    # Add `serial` to distinguish same-model keyboards. It is required when
+    # multiple keyboards of this model are connected.
+    serial: "6C0811AD"
+    banks: &shared_banks
 
-  - bank: My songs
-    msb: 0
+      # `bank` is a display name; `msb` and `songs` are required.
+      - bank: My songs
+        msb: 0
 
-    songs:
+        songs:
 
-      - title: Omnipocus
-        pc: 0
-        lights:
-          C1-C2: yellow
-          C#2-B2: orange
-          C3-D4: teal
-          D#4-E8: blue
+          - title: Omnipocus
+            pc: 0
+            lights:
+              C1-C2: yellow
+              C#2-B2: orange
+              C3-D4: teal
+              D#4-E8: blue
 
+          - title: The Road To Willow Creek part 1
+            pc: 9
+            lights:
+              C-2-F2: yellow
+              F#2-F4: orange
+              F#4-B5: blue
 
-      - title: The Road To Willow Creek part 1
-        pc: 9
-        lights:
-          C-1-F2: yellow
-          F#2-F4: orange
-          F#4-B5: blue
+          - title: The Road To Willow Creek part 2
+            pc: 10
+            lights:
+              C0-C6: 0xD000FF
+              # C1-C#2: yellow
+              # D2-C#3: orange
+              # D3-G3: red
+              # G#3-A4: blue
+              # Bb4-C5: green
+              # C#5-E5: violet
 
-      - title: The Road To Willow Creek part 2
-        pc: 10
-        lights:
-          C0-C6: teal
-          # C1-C#2: yellow
-          # D2-C#3: orange
-          # D3-G3: red
-          # G#3-A4: blue
-          # Bb4-C5: green
-          # C#5-E5: violet
+      - bank: Covers
+        msb: 1
 
-  - bank: Covers
-    msb: 1
+        songs:
 
-    songs:
+          - title: No Zones
+            pc: 0
+            lights:
+              C0-C6: lime
 
-      - title: No Zones
-        pc: 0
-        lights:
-          C0-C6: lime
-      
+          - title: Digital Man
+            pc: 1
+            lights:
+              C-1-G1: red
+              G#1-B4: violet
+              C5-F#8: blue
+
+          - title: I'm Gonna Tear Your Playhouse Down
+            pc: 2
+            lights:
+              C1-A2: blue
+              A#2-A3: green
+              A#3-F4: yellow
+              F#4-B5: orange # also in A#3-F4
+
+          - title: Murder By Numbers
+            pc: 3
+            lights:
+              C0-B1: blue
+              C2-C7: green
+
+          - title: Synchronicity 2
+            pc: 4
+            lights:
+              C#-1-D#2: yellow
+              E2-F#8: blue
+
+          - title: Telstar
+            pc: 5
+            lights:
+              C#-2-B2: blue
+              C3-F#8: green
+
+  # This S88 uses the same bank definitions as the S61 above.
+  - model: S88 MK1
+    serial: "9F1C6D44"
+    banks: *shared_banks
+
