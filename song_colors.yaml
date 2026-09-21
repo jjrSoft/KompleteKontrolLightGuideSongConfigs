@@ -6,6 +6,20 @@
 middleC: C3
 
 # Root-level `banks` are a shared default applied to every connected keyboard.
+
+# banks:
+#   - bank: Common
+#     msb: 0
+#     songs: 
+
+#     - title: Omnipocus
+#       pc: 0
+#       lights:
+#         C1-C2: yellow
+#         C#2-B2: orange
+#         C3-D4: teal
+#         D#4-E8: blue
+
 # When a matching keyboard entry exists below, its `banks` override the default.
 keyboards:
   # When the keyboards list has only one entry, `model` is optional.
@@ -13,7 +27,7 @@ keyboards:
   - model: S61 MK1
     # Add `serial` to distinguish same-model keyboards. It is required when
     # multiple keyboards of this model are connected.
-    serial: "6C0811AD"
+    #serial: "6C0811AD"
     banks: &shared_banks
 
       # `bank` is a display name; `msb` and `songs` are required.
@@ -93,6 +107,6 @@ keyboards:
 
   # This S88 uses the same bank definitions as the S61 above.
   - model: S88 MK1
-    serial: "9F1C6D44"
+    # serial: "9F1C6D44"
     banks: *shared_banks
 

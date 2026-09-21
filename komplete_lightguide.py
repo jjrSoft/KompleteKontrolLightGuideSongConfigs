@@ -245,12 +245,15 @@ class SongColorsValidator:
         if not self._valid_midi_value(msb):
             errors.append(f"Bank {bank_name} 'msb' must be an integer from 0 to 127")
 
-        songs = bank.get("songs")
+        songs = bank.get("songs", [])
         if not isinstance(songs, list):
-            errors.append(f"Bank {bank_name} 'songs' must be a list")
-            return
-        if not songs:
-            errors.append(f"Bank {bank_name} 'songs' must not be empty")
+            if songs is None:
+                errors.append(
+                    f"Bank {bank_name} 'songs' has no value; use 'songs: []' "
+                    "or omit 'songs'"
+                )
+            else:
+                errors.append(f"Bank {bank_name} 'songs' must be a list")
             return
 
         for song_idx, song in enumerate(songs, start=1):
@@ -487,7 +490,8 @@ class LightGuide:
                 Status.ERROR,
                 "Errors found in song colors config.",
                 None,
-                "View Validation Errors"
+                "View Validation Errors",
+                clear_validation_errors=False
             )
             return
 
@@ -610,35 +614,20 @@ class LightGuide:
                     "require serial numbers in song_colors.yaml"
                 )
 
-        for keyboard_idx, definition in enumerate(keyboard_definitions, start=1):
-            model = definition.get("model")
-            serial_number = definition.get("serial")
-            matching_devices = self.keyboard_devices
-            if model is not None:
-                product_id = keyboard_product_id(model)
-                matching_devices = [
-                    device for device in matching_devices
-                    if device["product_id"] == product_id
-                ]
-                if not matching_devices:
-                    errors.append(
-                        f"Keyboard #{keyboard_idx} model {model} is not connected"
-                    )
-                    continue
-            if serial_number is not None and not any(
-                    device.get("serial_number") == serial_number
-                    for device in matching_devices):
-                errors.append(
-                    f"Keyboard #{keyboard_idx} serial {serial_number} does not match "
-                    "a connected keyboard"
-                )
         return errors
 
-    def _song_configuration_error(self, status, message, details, link_text):
+    def _song_configuration_error(
+            self,
+            status,
+            message,
+            details,
+            link_text,
+            clear_validation_errors=True):
         self.song_colors_by_pc, self.song_lookup = None, None
         self.configuration_valid = False
-        self.validation_errors = []
-        self.set_validation_errors([])
+        if clear_validation_errors:
+            self.validation_errors = []
+            self.set_validation_errors([])
         self.set_status(status, message, details, link_text)
 
     def load_color_table(self):
@@ -666,7 +655,7 @@ class LightGuide:
             bank_msb = int(bank["msb"])
             bank_lsb = 0    # unused for now
 
-            for song in bank["songs"]:
+            for song in bank.get("songs", []):
                 program = int(song["pc"])
                 preset_lookup[(bank_msb, bank_lsb, program)] = self.parse_light_map(
                     song["lights"],
@@ -1036,7 +1025,7 @@ class LightGuideGuiApp:
 
         self.copyright_label = tk.Label(
             self.root,
-            text="© JJRSoft",
+            text="© jjrSoft 2026",
             font=("Helvetica", 8),
             fg="#666666"
         )
@@ -1092,6 +1081,7 @@ class LightGuideGuiApp:
                 item.get("serial_number") or ""
             )):
             keyboard = KEYBOARDS[device["product_id"]]
+            model_name = keyboard["name"].replace("Komplete Kontrol ", "")
             serial_number = device.get("serial_number") or "serial unavailable"
             definition_exists = (
                 hasattr(self, "light_guide")
@@ -1101,7 +1091,7 @@ class LightGuideGuiApp:
             row.pack(fill="x", pady=1)
             tk.Label(
                 row,
-                text=f"{keyboard['name']} (serial {serial_number})",
+                text=f"{model_name} (serial {serial_number})",
                 anchor="w",
                 background=STATUS_COLORS[Status.NONE],
                 padx=8,
@@ -1117,8 +1107,50 @@ class LightGuideGuiApp:
                 pady=4
             ).pack(side="right")
 
+        if hasattr(self, "light_guide"):
+            for definition in self._disconnected_keyboard_definitions(devices):
+                model = definition.get("model", "Configured keyboard")
+                serial_number = definition.get("serial", "serial unspecified")
+                row = tk.Frame(self.synth_rows, bg=STATUS_COLORS[Status.NONE])
+                row.pack(fill="x", pady=1)
+                tk.Label(
+                    row,
+                    text=f"{model} (serial {serial_number})",
+                    anchor="w",
+                    background=STATUS_COLORS[Status.NONE],
+                    padx=8,
+                    pady=4
+                ).pack(side="left", fill="x", expand=True)
+                tk.Label(
+                    row,
+                    text="Not connected",
+                    background=STATUS_COLORS[Status.ERROR],
+                    padx=8,
+                    pady=4
+                ).pack(side="right")
+
         self.root.update_idletasks()
         self.root.geometry(f"500x{max(120, self.root.winfo_reqheight())}")
+
+    def _disconnected_keyboard_definitions(self, devices):
+        if not self.light_guide.configuration_valid:
+            return []
+
+        definitions = self.light_guide.song_colors.get("keyboards", [])
+        disconnected = []
+        for definition in definitions:
+            product_id = keyboard_product_id(definition.get("model"))
+            serial_number = definition.get("serial")
+            if product_id is None:
+                continue
+            if any(
+                    device["product_id"] == product_id
+                    and (serial_number is None
+                         or device.get("serial_number") == serial_number)
+                    for device in devices):
+                continue
+            disconnected.append(definition)
+        return disconnected
 
     def _start_midi_monitor(self):
         if self.light_guide.device_available and self.light_guide.configuration_valid:
