@@ -393,6 +393,49 @@ class SongColorsValidator:
                 and all(isinstance(channel, int) and not isinstance(channel, bool)
                         and 0 <= channel <= 255 for channel in color))
 
+    def check_song_name_consistency(self, data):
+        """Warn when keyboards define different song titles for the same bank/PC."""
+        if not isinstance(data, dict):
+            return []
+
+        sources = []
+        if isinstance(data.get("banks"), list):
+            sources.append(("Default", data["banks"]))
+        for keyboard_idx, definition in enumerate(data.get("keyboards") or [], start=1):
+            if not isinstance(definition, dict) or not isinstance(definition.get("banks"), list):
+                continue
+            label = definition.get("model", f"Keyboard #{keyboard_idx}")
+            if definition.get("serial"):
+                label = f"{label} (serial {definition['serial']})"
+            sources.append((label, definition["banks"]))
+
+        if len(sources) < 2:
+            return []
+
+        titles_by_key = {}
+        for label, banks in sources:
+            for bank in banks:
+                if not isinstance(bank, dict):
+                    continue
+                msb = bank.get("msb")
+                for song in bank.get("songs") or []:
+                    if not isinstance(song, dict):
+                        continue
+                    pc = song.get("pc")
+                    title = song.get("title")
+                    if msb is None or pc is None or title is None:
+                        continue
+                    titles_by_key.setdefault((msb, pc), []).append((label, title))
+
+        warnings = []
+        for (msb, pc), entries in sorted(titles_by_key.items(), key=lambda item: item[0]):
+            if len({title for _, title in entries}) > 1:
+                details = ", ".join(f"{label}: '{title}'" for label, title in entries)
+                warnings.append(
+                    f"Bank MSB {msb} PC {pc} has mismatched song names across keyboards: {details}"
+                )
+        return warnings
+
 
 class LightGuide:
     hid_device = None
@@ -495,13 +538,27 @@ class LightGuide:
             )
             return
 
+        warnings = SongColorsValidator(self.color_table).check_song_name_consistency(
+            self.song_colors
+        )
+        self.validation_errors = warnings
+        self.set_validation_errors(warnings)
+
         self.song_colors_by_pc, self.song_lookup = None, None
         self.middle_c = self.song_colors.get("middleC", "C4")
         if self.keyboard is not None:
             self.note_offset = self.note_to_midi(self.keyboard["first_note"])
 
         self.configuration_valid = True
-        self.set_status(Status.OK, "OK", None, "")
+        if warnings:
+            self.set_status(
+                Status.WARNING,
+                "Warnings found in song colors config.",
+                None,
+                "View Validation Errors"
+            )
+        else:
+            self.set_status(Status.OK, "OK", None, "")
 
     def build_song_colors(self):
         keyboard_definition_errors = self._keyboard_definition_errors()
