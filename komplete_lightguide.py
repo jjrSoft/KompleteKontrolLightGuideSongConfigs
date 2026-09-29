@@ -986,7 +986,7 @@ class LightGuide:
         return result
 
 class MidiMonitor:
-    port_name = "IAC Driver KompleteLightGuide"
+    port_name = "IAC Driver KompleteKontrolLightGuide"
     bank_msb = None
     bank_lsb = None
     pc = None
