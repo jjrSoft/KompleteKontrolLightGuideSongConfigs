@@ -8,12 +8,14 @@ from pathlib import Path
 from logging import debug
 import sys
 import time
+import json
 import yaml
 import hid
 import mido
 import re
 import threading
 import tkinter as tk
+from tkinter import filedialog
 from tkinter import messagebox
 from enum import Enum
 import traceback
@@ -36,6 +38,23 @@ else:
 
 colors_yaml = APPDIR / "colors.yaml"
 song_colors_yaml = APPDIR / "song_colors.yaml"
+settings_file = APPDIR / "app_settings.json"
+
+
+def load_app_settings():
+    try:
+        with open(settings_file, "r") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_app_settings(settings):
+    try:
+        with open(settings_file, "w") as f:
+            json.dump(settings, f)
+    except OSError:
+        pass
 
 NATIVE_INSTRUMENTS = 0x17cc
 
@@ -1052,6 +1071,7 @@ class LightGuideGuiApp:
         self.error_log = None
         self.status_details = []
         self.status_details_label = "Show full path"
+        self.app_settings = load_app_settings()
 
         self._build_widgets()
 
@@ -1077,8 +1097,20 @@ class LightGuideGuiApp:
         self.current_song_label = tk.Label(self.root, text="No song loaded", font=("Helvetica", 16, "bold"))
         self.current_song_label.pack()
 
-        self.reload_button = tk.Button(self.root, text="Reload Song Colors", command=self.reload_colors)
-        self.reload_button.pack()
+        self.reload_frame = tk.Frame(self.root)
+        self.reload_frame.pack()
+
+        self.load_button = tk.Button(self.reload_frame, text="Load", command=self.load_song_colors_file)
+        self.load_button.pack(side="left", padx=(0, 4))
+
+        self.song_colors_file_label = tk.Label(
+            self.reload_frame,
+            text=Path(song_colors_yaml).name
+        )
+        self.song_colors_file_label.pack(side="left", padx=(0, 4))
+
+        self.reload_button = tk.Button(self.reload_frame, text="Reload", command=self.reload_colors)
+        self.reload_button.pack(side="left")
 
         self.copyright_label = tk.Label(
             self.root,
@@ -1320,6 +1352,22 @@ class LightGuideGuiApp:
             0,
             lambda: self.update_labels(bank_msb, bank_lsb, pc, title)
         )
+
+    def load_song_colors_file(self):
+        initial_dir = self.app_settings.get("last_song_colors_dir") or str(Path(song_colors_yaml).parent)
+        selected_file = filedialog.askopenfilename(
+            title="Load Song Colors",
+            initialdir=initial_dir,
+            filetypes=[("YAML files", "*.yaml *.yml"), ("All files", "*.*")]
+        )
+        if not selected_file:
+            return
+
+        self.light_guide.song_colors_file = selected_file
+        self.song_colors_file_label.config(text=Path(selected_file).name)
+        self.app_settings["last_song_colors_dir"] = str(Path(selected_file).parent)
+        save_app_settings(self.app_settings)
+        self.reload_colors()
 
     def reload_colors(self):
         current_data = self.midi_monitor.get_current_data() if self.midi_monitor else None
