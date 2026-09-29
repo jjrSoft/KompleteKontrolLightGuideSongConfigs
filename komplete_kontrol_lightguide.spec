@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['komplete_lightguide.py'],
+    ['komplete_kontrol_lightguide.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -21,7 +21,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='komplete_lightguide',
+    name='komplete_kontrol_lightguide',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -40,11 +40,11 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='komplete_lightguide',
+    name='komplete_kontrol_lightguide',
 )
 app = BUNDLE(
     coll,
-    name='komplete_lightguide.app',
-    icon='komplete_lightguide.icns',
+    name='komplete_kontrol_lightguide.app',
+    icon='komplete_kontrol_lightguide.icns',
     bundle_identifier=None,
 )
