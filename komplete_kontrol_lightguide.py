@@ -20,7 +20,7 @@ from tkinter import messagebox
 from enum import Enum
 import traceback
 
-VERSION = "v1.0"
+VERSION = "1.1.0"
 TITLE = "Komplete Kontrol LightGuide Manager GUI"
 
 if getattr(sys, 'frozen', False):

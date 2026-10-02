@@ -1,25 +1,29 @@
-# KompleteLightGuide
+# Komplete Kontrol LightGuide Manager
 
-A lightweight macOS utility for controlling the Native Instruments Komplete Kontrol Light Guide independently of the Komplete Kontrol software.
+Komplete Kontrol LightGuide Manager is a lightweight macOS utility for controlling the Native Instruments Komplete Kontrol Light Guide independently of the Komplete Kontrol software.
 
-The application listens for MIDI Bank Select and Program Change messages, then updates the keyboard Light Guide according to song definitions stored in a YAML configuration file.
+The application listens for MIDI Bank Select and Program Change messages, then updates the keyboard Light Guide according to the definitions for that bank/program combination, as stored in a YAML configuration file.
 
 Designed for live performance use with applications such as VST Live.
 
 ## Features
 
-- Direct HID communication with supported Komplete Kontrol MK1 and MK2 keyboards
+- No Komplete Kontrol software required: direct HID communication with supported Komplete Kontrol MK1 and MK2 keyboards
+- Multiple simultaneous connections are supported
 - Automatic keyboard detection with per-model key counts and Light Guide protocols
 - Inline keyboard rows showing each connected model, serial number, and configuration status
-- No Komplete Kontrol software required
-- MIDI-driven song selection
-- YAML-based song and color definitions
+- MIDI-driven configuration (song) selection from YAML-based definitions
+
+
+  - Definitions for the Light Guide are loaded from `song_colors.yaml` in the application folder.
+  - Supports named colors (from `colors.yaml`), RGB hex values, and integer RGB values.
+
 - Validation of YAML structure, MIDI ranges, duplicate definitions, and overlapping light ranges
-- Configuration is loaded and validated before device-sized song lookup tables are built
-- `Reload Song Colors` reloads both `colors.yaml` and `song_colors.yaml`
-- Supports named colors, RGB hex values and integer RGB values
+- By default, `song_colors.yaml` is loaded from the application folder. The `Load` button opens a file dialog so you can load a different song colors YAML file without restarting the app.
+- `Reload` reloads both `colors.yaml` and `song_colors.yaml` from the currently loaded path.
+- The label next to the buttons shows the file name of the currently loaded song colors configuration.
+- The last folder used in the `Load` dialog is remembered across restarts in `app_settings.json`.
 - Fast lookup using precompiled `(bank MSB, program)` mappings
-- Ideal for setlist-based live performances
 
 ## Supported Hardware
 
@@ -37,21 +41,23 @@ The application detects these USB HID product IDs automatically:
 
 MK1 keyboards use RGB Light Guide packets. MK2 keyboards use the MK2 per-key packet protocol and the built-in color mapping.
 
-__Note:__ Only S61 MK1 tested in real life. Other configurations based on https://github.com/ojacques/SynthesiaKontrol/blob/master/SynthesiaKontrol.py.
+**Note:** Only the S61 MK1 and S88 MK1 have been tested with this application. Support for other configurations is based on [SynthesiaKontrol](https://github.com/ojacques/SynthesiaKontrol/blob/master/SynthesiaKontrol.py).
 
-## How It Works
+## Usage
+
+### Connection Diagram
 
 ```text
-VST Live (or any other host where you select programs and send bank and program changes)
+VST host: select a program (song)
     │
     ├── Bank Select (CC0)
     └── Program Change
             │
             ▼
-IAC Driver "KompleteLightGuide"
+IAC Driver "KompleteKontrolLightGuide"
             │
             ▼
-KompleteLightGuide
+KompleteKontrolLightGuide
             │
             ▼
 USB HID
@@ -60,29 +66,47 @@ USB HID
 Supported Komplete Kontrol keyboard
 ```
 
-A song change in VST Live immediately updates the keyboard Light Guide.
+A song change in the host sends bank and program changes, which immediately update the keyboard Light Guide.
+
+### The GUI
+
+The GUI looks like this:
+
+![GUI image](images/lightguide_manager_2_keyboards.png)
+
+* The top line shows the latest bank and patch ("No patch" until a bank or patch change is received).
+* The next line shows the corresponding song name in a large font ("No song loaded" until a song is selected by a patch change, or if the received bank and patch do not match an entry in the YAML file).
+* The middle section contains the `Load` and `Reload` buttons, with a text field between them showing the name of the currently loaded song color definition file.
+  * Use `Load` to select a different song color definition file. The selected folder is remembered, so the file dialog opens to that folder the next time you load a file.
+  * Use `Reload` to reload the current song color definition file. This is useful when you have modified the definitions while developing Light Guide colors for different songs.
+* Below the copyright notice, all connected Komplete Kontrol keyboards are listed.
+  * Models and serial numbers are shown so you can distinguish keyboards, even when multiple keyboards of the same model are connected.
+  * The status of each keyboard and its Light Guide definition appears at the end of the line.
+    * A green `OK` badge means a matching definition exists.
+    * A yellow badge means the connected keyboard has no definition.
+    * A configured model/serial pair that is not currently connected appears with a red `Not connected` badge, alongside any connected keyboard of that model.
+  * The application scans regularly for connected keyboards, so a newly connected keyboard will appear in the list shortly.
+* The status bar at the bottom displays the general status.
+  * If there are issues, the status bar turns yellow or red, and a link appears on the right to open a dialog listing the problems.
+
+### Startup Behavior
+
+Upon startup, the application loads color names and default song color definitions from the YAML files `colors.yaml` and `song_colors.yaml` in the same folder as the executable or script (`~/Applications/KompleteKontrolLightGuide` if installed as described below).
+
+The files are checked for syntax errors at startup and whenever they are loaded or reloaded. If there are errors, the status line turns red and a `Details` link appears at the end.
+
+![GUI showing invalid YAML](images/invalid_yaml.png)
+
+Clicking the link opens a dialog box that lists the errors encountered.
+
+### Action
+
+Whenever the application receives a MIDI bank/patch change combination, it sets the Light Guide colors on the connected keyboards according to the loaded song color definitions in the YAML file.
+
+![S88 Light Guide active](images/S88_colors.jpg)
+
 
 ## Installation
-
-### Python Environment
-
-Install dependencies:
-
-```bash
-pip install hidapi
-pip install mido
-pip install python-rtmidi
-pip install pyyaml
-```
-
-```TkInter``` is required for the GUI.
-
-To build the standalone executable, `pyinstaller` is needed as well.
-
-The dependencies are listed in `requirements.txt` and can be installed with 
-```bash
-pip install -r requirements.txt
-```
 
 ### macOS MIDI Setup
 
@@ -105,36 +129,105 @@ Device is online
 Create a port named:
 
 ```text
-KompleteLightGuide
+KompleteKontrolLightGuide
 ```
 
 The application listens on:
 
 ```text
-IAC Driver KompleteLightGuide
+IAC Driver KompleteKontrolLightGuide
 ```
+
+### Python Environment
+
+Install dependencies, preferably in a virtual environment:
+
+The dependencies are listed in `requirements.txt` and can be installed with:
+
+```bash
+pip install -r requirements.txt
+```
+
+This includes PyInstaller, which is required to build the standalone executable.
+
+## Running
+
+The files `colors.yaml` and `song_colors.yaml` must be next to `komplete_kontrol_lightguide.py` when you run the application, because it loads both files from that directory. Sample files are provided in the repository root for initial testing, but you will likely want to customize at least `song_colors.yaml` for your songs and keyboard zones.
+
+An `app_settings.json` file is created in the same directory to remember the last folder used with the `Load` button.
+
+Run the application from source with:
+
+```bash
+python komplete_kontrol_lightguide.py
+```
+
+## Running as a Standalone Executable
+
+### Building the Executable
+
+Install PyInstaller:
+
+```bash
+pip install pyinstaller
+```
+
+Build:
+
+```bash
+pyinstaller komplete_kontrol_lightguide.spec
+```
+
+The executable will be found in:
+
+```text
+dist/
+```
+
+The generated app uses `komplete_kontrol_lightguide.icns` as its macOS icon.
+
+### Install the Executable
+
+Copy the `Komplete Kontrol Lightguide.app` application and the YAML files to `~/Applications/KompleteKontrolLightGuide`.
+
+This lets you start the app from Launchpad like any other application.
 
 ## YAML Format
 
-The application loads `song_colors.yaml` from the same directory as the source script or executable.
+The song definitions for the Light Guide are stored in a YAML file.
+By default, the application loads `song_colors.yaml` from the same directory as the source script or executable.
+You can load any YAML file manually from the GUI.
+
+### Single-Keyboard Setup
+
+For a single-keyboard setup, the YAML file can be quite simple.
+
+The root-level `banks` list provides shared default banks for every connected keyboard.
+
+Each bank has a bank select `msb` value. Within each bank is a list of `songs`, each with a `title`, a program change number (`pc`), and a `lights` entry. The `lights` entry is a list of zones and colors that defines the Light Guide appearance.
+
+Program change (`pc`) and bank selection MSB (`msb`, CC0) values are zero-based MIDI values from `0` to `127`. The bank selection LSB is currently unused and is treated as `0`.
+
+Zones are note ranges written from the lowest to the highest note, with the notes separated by a dash. Each note uses the format `[A-G]number`. Normally, middle C is `C4`, but MIDI note-naming conventions differ. The optional top-level `middleC` entry lets you specify which note represents middle C (MIDI note 60). Common alternatives are `C3` and `C5`. Negative octave numbers are also allowed, but all notes must resolve to MIDI note numbers from `0` to `127`.
+
+The Light Guide illuminates all keys between and including the lowest and highest notes with the specified color. In addition to named colors, several other formats are supported, as described in [Supported Color Formats](#supported-color-formats).
 
 Example:
 
 ```yaml
-# comments are supported
+# Comments beginning with a hash are supported.
+
 # VSTLive convention: MIDI note 60 is C3 unlike the typical C4.
-# C4 is omitted if this entry does not exist.
+# C4 is used as the middle C if this entry does not exist.
 middleC: C3
 
 banks:
 
   - msb: 0
-
     songs:
 
       - title: Song A
         pc: 1
-
         lights:
           C1-C#2: yellow
           D2-C#3: orange
@@ -145,18 +238,17 @@ banks:
 
       - title: Song B
         pc: 2
-
         lights:
           C1-B2: blue
           C3-B4: green
           C5-C5: red
 ```
 
-`pc` and `msb` values are zero-based MIDI values from `0` to `127`. `middleC` defines the octave convention used when converting note names to MIDI numbers. The sample uses VSTLive's convention, where MIDI note 60 is `C3`; use `C4` instead for Scientific Pitch Notation. Light ranges must resolve to MIDI `0` through `127`; the lower and upper endpoints are inclusive.
+### Multi-Keyboard Setup
 
-### Multiple Keyboards
+For multi-keyboard setups, you may need to distinguish between keyboards. If you want to apply the same Light Guide zone settings to all keyboards, you can use only the root-level `banks` list. Otherwise, use a `keyboards` entry containing a `banks` list for each keyboard. The application identifies each keyboard by `model` and, optionally, `serial` when multiple keyboards of the same model are connected. The model must be one of the recognized models.
 
-Root-level `banks` are a shared default applied to every connected keyboard. Add `keyboards` entries only where a model or serial number needs a different map; a matching entry overrides the shared default. When more than one supported keyboard needs distinct maps, configure each entry by model name and add a serial number for duplicate models. When the configuration has one keyboard entry, `model` may be omitted.
+A top-level `banks` list serves as the default for any keyboard that does not match the model and serial number in a `keyboards` entry.
 
 ```yaml
 middleC: C3
@@ -193,8 +285,6 @@ keyboards:
               C1-C3: yellow
 ```
 
-The application lists each connected model and serial number above the footer. A green `OK` badge means a matching definition exists; a yellow badge means that keyboard has no definition. Root-level `banks` is a shared default for every connected keyboard, not only a single keyboard.
-
 ## Supported Color Formats
 
 ### Named Colors
@@ -222,7 +312,7 @@ C3-C4: 0xFF0000
 D4-E4: 16711680
 ```
 
-Equivalent to:
+Both values are equivalent to:
 
 ```text
 FF0000
@@ -246,6 +336,8 @@ RGB list channels must each resolve to an integer from `0` to `255`.
 
 ## Built-In Colors
 
+Built-in colors are defined in `colors.yaml`. This can be modified if necessary. By default, the colors are as follows:
+
 | Name | RGB |
 |--------|--------|
 | black | 000000 |
@@ -268,100 +360,17 @@ RGB list channels must each resolve to an integer from `0` to `255`.
 | dimblue | 000040 |
 | dimwhite | 202020 |
 
-## MIDI Mapping
-
-Song lookup uses:
-
-```text
-(bank MSB, program)
-```
-
-Example:
-
-```text
-CC0 = 0
-PC  = 1
-```
-
-matches:
-
-```yaml
-msb: 0
-pc: 1
-```
-
-The bank LSB is currently unused and is treated as `0`.
 
 ## Runtime Errors
 
 Unknown MIDI patches are non-fatal: the current song and lights remain unchanged and the status bar shows a warning.
 
-Invalid configuration, MIDI input failures, and keyboard failures show an error status. `Reload Song Colors` remains enabled regardless of keyboard availability so configuration can be corrected and retried.
+Invalid configuration, MIDI input failures, and keyboard failures show an error status. `Reload` and `Load` remain enabled regardless of keyboard availability so configuration can be corrected and retried.
 
-## Running
-
-Place `colors.yaml` and `song_colors.yaml` beside `komplete_lightguide.py` before running from source. The application loads both files from that directory.
-
-```bash
-python komplete_lightguide.py
-```
-
-For a bundled macOS application, place both YAML files beside the generated `.app` bundle or executable as described below.
-
-## Building a Standalone Executable
-
-Install PyInstaller:
-
-```bash
-pip install pyinstaller
-```
-
-Build:
-
-```bash
-pyinstaller komplete_lightguide.spec
-```
-
-Executable will be found in:
-
-```text
-dist/
-```
-
-The generated app uses `komplete_lightguide.icns` for its macOS icon. Place `colors.yaml` and `song_colors.yaml` beside the generated application or executable; they are external configuration files and are not embedded in the bundle.
-
-## Install Standalone Executable
-
-Copy the executable and the yaml files to ```~/Applications/KompleteLightGuide```.
-
-Open Automator and create:
-
-```New → Application```
-
-Add:
-
-```Run Shell Script```
-
-and use this as the script:
-
-```
-cd ~/Applications/KompleteLightGuide
-./komplete_lightguide
-```
-
-This way you can start the app from Launchpad like everything else.
-
-The generated PyInstaller app bundle includes the icon. If an Automator launcher wraps the executable, set the same icon on the outer Automator `.app` as well, because macOS displays the launcher's icon in Launchpad and the Dock.
-
-1. Open the Automator application in Finder and press ⌘I.
-2. Click the small icon in the upper-left corner of the Info window.
-3. Paste the icon or assign `komplete_lightguide.icns` to the launcher bundle.
-
-The app immediately gets the new icon.
 
 ## Credits
 
-Based on previous reverse engineering work by members of the Native Instruments community including:
+This project is based on previous reverse-engineering work by members of the Native Instruments community, including:
 
 - jasonbrent https://github.com/jasonbrent/SynthesiaKomplete
 - Olivier Jacques https://github.com/ojacques/SynthesiaKontrol
@@ -372,3 +381,17 @@ This project extends those discoveries with song-based Light Guide control for l
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE).
+
+## Version History
+
+- **1.1.0**
+  - Added support for multiple keyboards with per-keyboard light configurations, including multiple keyboards of the same model via serial number.
+  - Added a live list of connected keyboards with status badges: OK, Warning, or Not connected. The Not connected badge appears when the configuration requests a specific device that is not present. Typos and unsupported models are not shown because they cannot be resolved.
+  - Renamed the `Reload Song Colors` button to `Reload`; added a label showing the currently loaded song colors file name and a `Load` button for selecting any song colors YAML file via a file dialog. The last-used folder is remembered in `app_settings.json`.
+  - Improved YAML validation and error handling.
+  - Added warnings for mismatching song names when the same bank/PC is defined for multiple keyboards.
+  - Renamed the IAC MIDI port to `KompleteKontrolLightGuide` and renamed the script and related files from `komplete_lightguide*` to `komplete_kontrol_lightguide*`.
+  - Adopted semantic versioning.
+
+- **1.0**
+  - Initial release.

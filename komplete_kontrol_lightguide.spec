@@ -44,7 +44,7 @@ coll = COLLECT(
 )
 app = BUNDLE(
     coll,
-    name='komplete_kontrol_lightguide.app',
+    name='Komplete Kontrol Lightguide.app',
     icon='komplete_kontrol_lightguide.icns',
     bundle_identifier=None,
 )

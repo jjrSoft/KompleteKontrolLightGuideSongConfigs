@@ -1,3 +1,5 @@
+# All comments beginning with a hash are ignored.
+
 # `msb` and `pc` are raw MIDI values from 0 through 127. Hosts such as VSTLive
 # often display programs one-based.
 
@@ -108,5 +110,21 @@ keyboards:
   # This S88 uses the same bank definitions as the S61 above.
   - model: S88 MK1
     # serial: "9F1C6D44"
-    banks: *shared_banks
+    
+    # It is possible to reference the shared bank definitions from the S61 above. 
+    # In that case, do not redefine the banks manually.
+    #banks: *shared_banks
+
+    banks:
+      - bank: My songs
+        msb: 0
+
+        songs:
+
+          - title: Omnipocus
+            pc: 0
+            lights:
+              C1-E8: blue
+
+
 
