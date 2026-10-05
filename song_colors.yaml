@@ -7,6 +7,10 @@
 # If missing, middle C is assumed to be C4.
 middleC: C3
 
+# Optional one-based indexing for banks and programs. Default is false (zero-based).
+oneBasedBanks: true
+oneBasedPrograms: true
+
 # Root-level `banks` are a shared default applied to every connected keyboard.
 
 # banks:

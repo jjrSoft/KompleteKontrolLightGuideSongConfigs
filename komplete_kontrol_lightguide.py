@@ -152,6 +152,8 @@ class SongColorsValidator:
     def __init__(self, color_table):
         self.color_table = color_table
         self.middle_c = "C4"
+        self.bank_base = 0
+        self.program_base = 0
 
     def validate(self, data):
         errors = []
@@ -159,6 +161,8 @@ class SongColorsValidator:
             return ["Top level YAML structure must be a mapping"]
 
         self.middle_c = data.get("middleC", "C4")
+        self.bank_base = 1 if data.get("oneBasedBanks") is True else 0
+        self.program_base = 1 if data.get("oneBasedPrograms") is True else 0
         self._validate_song_metadata(data, errors)
         if "banks" in data:
             self._validate_banks(data["banks"], errors, "Default ")
@@ -171,12 +175,16 @@ class SongColorsValidator:
     def _validate_song_metadata(self, data, errors):
         self._validate_unknown_keys(
             data,
-            {"middleC", "banks", "keyboards"},
+            {"middleC", "oneBasedBanks", "oneBasedPrograms", "banks", "keyboards"},
             "Top level",
             errors
         )
         if "banks" not in data and "keyboards" not in data:
             errors.append("Missing required top-level key: banks or keyboards")
+
+        for key in ("oneBasedBanks", "oneBasedPrograms"):
+            if key in data and not isinstance(data[key], bool):
+                errors.append(f"'{key}' must be true or false")
 
         middle_c = data.get("middleC")
         if middle_c is not None and not self._valid_note(middle_c):
@@ -263,8 +271,11 @@ class SongColorsValidator:
             bank_name = f"#{bank_idx}"
 
         msb = bank.get("msb")
-        if not self._valid_midi_value(msb):
-            errors.append(f"Bank {bank_name} 'msb' must be an integer from 0 to 127")
+        if not self._valid_midi_value(msb, self.bank_base):
+            errors.append(
+                f"Bank {bank_name} 'msb' must be an integer from "
+                f"{self.bank_base} to {127 + self.bank_base}"
+            )
 
         songs = bank.get("songs", [])
         if not isinstance(songs, list):
@@ -298,8 +309,11 @@ class SongColorsValidator:
             title = f"#{song_idx}"
 
         pc = song.get("pc")
-        if not self._valid_midi_value(pc):
-            errors.append(f"Bank {bank_name} song {title} 'pc' must be an integer from 0 to 127")
+        if not self._valid_midi_value(pc, self.program_base):
+            errors.append(
+                f"Bank {bank_name} song {title} 'pc' must be an integer from "
+                f"{self.program_base} to {127 + self.program_base}"
+            )
         elif self._definition_seen(msb, pc, definitions):
             errors.append(f"Duplicate song definition for bank MSB {msb}, PC {pc}")
 
@@ -396,8 +410,9 @@ class SongColorsValidator:
         match = re.fullmatch(r'[A-G][#b]?(-?\d+)', note) if isinstance(note, str) else None
         return match is not None and -2 <= int(match.group(1)) <= 9
 
-    def _valid_midi_value(self, value):
-        return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 127
+    def _valid_midi_value(self, value, base=0):
+        return (isinstance(value, int) and not isinstance(value, bool)
+                and base <= value <= 127 + base)
 
     def _valid_color(self, color):
         if isinstance(color, str):
@@ -729,12 +744,16 @@ class LightGuide:
         keycount = self.keycount if keycount is None else keycount
         note_offset = self.note_offset if note_offset is None else note_offset
 
+        settings = getattr(self, "song_colors", None) or {}
+        bank_base = 1 if settings.get("oneBasedBanks") is True else 0
+        program_base = 1 if settings.get("oneBasedPrograms") is True else 0
+
         for bank in song_colors["banks"]:
-            bank_msb = int(bank["msb"])
+            bank_msb = int(bank["msb"]) - bank_base
             bank_lsb = 0    # unused for now
 
             for song in bank.get("songs", []):
-                program = int(song["pc"])
+                program = int(song["pc"]) - program_base
                 preset_lookup[(bank_msb, bank_lsb, program)] = self.parse_light_map(
                     song["lights"],
                     numkeys=keycount,

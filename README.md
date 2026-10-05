@@ -207,7 +207,8 @@ The root-level `banks` list provides shared default banks for every connected ke
 
 Each bank has a bank select `msb` value. Within each bank is a list of `songs`, each with a `title`, a program change number (`pc`), and a `lights` entry. The `lights` entry is a list of zones and colors that defines the Light Guide appearance.
 
-Program change (`pc`) and bank selection MSB (`msb`, CC0) values are zero-based MIDI values from `0` to `127`. The bank selection LSB is currently unused and is treated as `0`.
+Program change (`pc`) and bank selection MSB (`msb`, CC0) values are by default zero-based MIDI values from `0` to `127`. Many hosts display banks and/or programs starting from 1. Set the optional top-level entries `oneBasedBanks: true` and/or `oneBasedPrograms: true` to write `msb` and/or `pc` values from `1` to `128` instead. Each entry is independent and defaults to `false`.
+The bank selection LSB is currently unused and is treated as `0`.
 
 Zones are note ranges written from the lowest to the highest note, with the notes separated by a dash. Each note uses the format `[A-G]number`. Normally, middle C is `C4`, but MIDI note-naming conventions differ. The optional top-level `middleC` entry lets you specify which note represents middle C (MIDI note 60). Common alternatives are `C3` and `C5`. Negative octave numbers are also allowed, but all notes must resolve to MIDI note numbers from `0` to `127`.
 
@@ -221,6 +222,10 @@ Example:
 # VSTLive convention: MIDI note 60 is C3 unlike the typical C4.
 # C4 is used as the middle C if this entry does not exist.
 middleC: C3
+
+# Optional one-based indexing for banks and programs. Default is false (zero-based).
+oneBasedBanks: true
+oneBasedPrograms: true
 
 banks:
 
