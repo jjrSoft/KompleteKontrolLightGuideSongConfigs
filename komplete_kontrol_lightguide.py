@@ -19,6 +19,8 @@ from tkinter import filedialog
 from tkinter import messagebox
 from enum import Enum
 import traceback
+import subprocess
+import os
 
 VERSION = "1.1.0"
 TITLE = "Komplete Kontrol LightGuide Manager GUI"
@@ -1072,6 +1074,9 @@ class LightGuideGuiApp:
         self.status_details = []
         self.status_details_label = "Show full path"
         self.app_settings = load_app_settings()
+        if "editor" not in self.app_settings:
+            self.app_settings["editor"] = "default"
+            save_app_settings(self.app_settings)
 
         self._build_widgets()
 
@@ -1110,7 +1115,10 @@ class LightGuideGuiApp:
         self.song_colors_file_label.pack(side="left", padx=(0, 4))
 
         self.reload_button = tk.Button(self.reload_frame, text="Reload", command=self.reload_colors)
-        self.reload_button.pack(side="left")
+        self.reload_button.pack(side="left", padx=(0, 4))
+
+        self.edit_button = tk.Button(self.reload_frame, text="Edit", command=self.edit_song_colors_file)
+        self.edit_button.pack(side="left")
 
         self.copyright_label = tk.Label(
             self.root,
@@ -1368,6 +1376,23 @@ class LightGuideGuiApp:
         self.app_settings["last_song_colors_dir"] = str(Path(selected_file).parent)
         save_app_settings(self.app_settings)
         self.reload_colors()
+
+    def edit_song_colors_file(self):
+        song_colors_file = str(self.light_guide.song_colors_file)
+        editor = self.app_settings.get("editor")
+        try:
+            if editor and str(editor).strip().lower() != "default":
+                # On macOS the editor may be an application name or .app path.
+                command = ["open", "-a", editor, song_colors_file] if sys.platform == "darwin" else [editor, song_colors_file]
+                subprocess.Popen(command)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", song_colors_file])
+            elif sys.platform == "win32":
+                os.startfile(song_colors_file)
+            else:
+                subprocess.Popen(["xdg-open", song_colors_file])
+        except OSError as e:
+            messagebox.showerror("Edit", f"Could not open {song_colors_file} for editing:\n{e}")
 
     def reload_colors(self):
         current_data = self.midi_monitor.get_current_data() if self.midi_monitor else None

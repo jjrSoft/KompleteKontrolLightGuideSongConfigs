@@ -76,9 +76,10 @@ The GUI looks like this:
 
 * The top line shows the latest bank and patch ("No patch" until a bank or patch change is received).
 * The next line shows the corresponding song name in a large font ("No song loaded" until a song is selected by a patch change, or if the received bank and patch do not match an entry in the YAML file).
-* The middle section contains the `Load` and `Reload` buttons, with a text field between them showing the name of the currently loaded song color definition file.
+* The middle section contains the `Load`, `Reload`, and `Edit` buttons, with a text field between `Load` and `Reload` showing the name of the currently loaded song color definition file.
   * Use `Load` to select a different song color definition file. The selected folder is remembered, so the file dialog opens to that folder the next time you load a file.
   * Use `Reload` to reload the current song color definition file. This is useful when you have modified the definitions while developing Light Guide colors for different songs.
+  * Use `Edit` to open the current song color definition file in an editor. The `"editor"` entry in `app_settings.json` is created with the value `"default"` on first start, which uses the system's default editor for YAML files. To use a different editor, change it, for example `{"editor": "Visual Studio Code"}` (an application name or `.app` path on macOS, or an executable path on other systems). Click `Reload` after saving your changes.
 * Below the copyright notice, all connected Komplete Kontrol keyboards are listed.
   * Models and serial numbers are shown so you can distinguish keyboards, even when multiple keyboards of the same model are connected.
   * The status of each keyboard and its Light Guide definition appears at the end of the line.
