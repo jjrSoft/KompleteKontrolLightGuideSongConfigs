@@ -1011,6 +1011,7 @@ class MidiMonitor:
     bank_msb = None
     bank_lsb = None
     pc = None
+    last_received = None
 
     def __init__(self, light_guide, set_song_callback, set_status):
         self.light_guide = light_guide
@@ -1024,6 +1025,7 @@ class MidiMonitor:
             elif msg.control == 32:
                 self.bank_lsb = msg.value
         elif msg.type == "program_change":
+            self.last_received = (self.bank_msb, self.bank_lsb, msg.program)
             if not self.light_guide.send_colors(self.bank_msb, self.bank_lsb, msg.program):
                 return
 
@@ -1395,7 +1397,6 @@ class LightGuideGuiApp:
             messagebox.showerror("Edit", f"Could not open {song_colors_file} for editing:\n{e}")
 
     def reload_colors(self):
-        current_data = self.midi_monitor.get_current_data() if self.midi_monitor else None
         if not self.light_guide.load_color_table():
             return
 
@@ -1423,14 +1424,17 @@ class LightGuideGuiApp:
             )
             self.midi_thread.start()
 
-        if current_data is None:
-            current_data = self.midi_monitor.get_current_data()
+        # Retry the latest received bank/PC, including one that did not match before.
+        last_received = self.midi_monitor.last_received
+        if last_received is None:
+            return
 
-        bank_msb, bank_lsb, pc, title = current_data
-        if pc is not None:
-            # we have a song loaded, so we need to re-send the colors for it
-            self.set_song(bank_msb, bank_lsb, pc, title)
-            self.light_guide.send_colors(bank_msb, bank_lsb, pc)
+        bank_msb, bank_lsb, pc = last_received
+        matched = self.light_guide.send_colors(bank_msb, bank_lsb, pc)
+        if matched or self.midi_monitor.pc is not None:
+            self.midi_monitor.pc = pc if matched else None
+            self.set_song(bank_msb, bank_lsb, pc,
+                          self.light_guide.get_song_title(bank_msb, bank_lsb, pc))
 
 
 if __name__ == "__main__":
