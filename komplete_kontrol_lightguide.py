@@ -61,13 +61,13 @@ def save_app_settings(settings):
 NATIVE_INSTRUMENTS = 0x17cc
 
 KEYBOARDS = {
-    0x1620: {"name": "Komplete Kontrol S61 MK2", "mode": "MK2", "keys": 61, "offset": -36, "first_note": "C1"},
-    0x1630: {"name": "Komplete Kontrol S88 MK2", "mode": "MK2", "keys": 88, "offset": -21, "first_note": "A0"},
-    0x1610: {"name": "Komplete Kontrol S49 MK2", "mode": "MK2", "keys": 49, "offset": -36, "first_note": "C1"},
-    0x1360: {"name": "Komplete Kontrol S61 MK1", "mode": "MK1", "keys": 61, "offset": -36, "first_note": "C1"},
-    0x1410: {"name": "Komplete Kontrol S88 MK1", "mode": "MK1", "keys": 88, "offset": -21, "first_note": "A0"},
-    0x1350: {"name": "Komplete Kontrol S49 MK1", "mode": "MK1", "keys": 49, "offset": -36, "first_note": "C1"},
-    0x1340: {"name": "Komplete Kontrol S25 MK1", "mode": "MK1", "keys": 25, "offset": -21, "first_note": "C1"},
+    0x1620: {"name": "Komplete Kontrol S61 MK2", "mode": "MK2", "keys": 61, "offset": -36, "first_midi": 36},
+    0x1630: {"name": "Komplete Kontrol S88 MK2", "mode": "MK2", "keys": 88, "offset": -21, "first_midi": 21},
+    0x1610: {"name": "Komplete Kontrol S49 MK2", "mode": "MK2", "keys": 49, "offset": -36, "first_midi": 36},
+    0x1360: {"name": "Komplete Kontrol S61 MK1", "mode": "MK1", "keys": 61, "offset": -36, "first_midi": 36},
+    0x1410: {"name": "Komplete Kontrol S88 MK1", "mode": "MK1", "keys": 88, "offset": -21, "first_midi": 21},
+    0x1350: {"name": "Komplete Kontrol S49 MK1", "mode": "MK1", "keys": 49, "offset": -36, "first_midi": 36},
+    0x1340: {"name": "Komplete Kontrol S25 MK1", "mode": "MK1", "keys": 25, "offset": -21, "first_midi": 21},
 }
 
 def connected_keyboards():
@@ -582,8 +582,6 @@ class LightGuide:
 
         self.song_colors_by_pc, self.song_lookup = None, None
         self.middle_c = self.song_colors.get("middleC", "C4")
-        if self.keyboard is not None:
-            self.note_offset = self.note_to_midi(self.keyboard["first_note"])
 
         self.configuration_valid = True
         if warnings:
@@ -831,7 +829,7 @@ class LightGuide:
                         "keyboard": keyboard,
                         "product_id": product_id,
                         "keycount": keyboard["keys"],
-                        "note_offset": self.note_to_midi(keyboard["first_note"]),
+                        "note_offset": keyboard["first_midi"],
                         "mode": keyboard["mode"],
                         "label": label,
                         "serial_number": device_info.get("serial_number"),
