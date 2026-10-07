@@ -6,6 +6,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import komplete_kontrol_lightguide as lightguide_module
+import light_guide as light_guide_module
 
 
 class FakeHidDevice:
@@ -482,7 +483,7 @@ class MultiKeyboardTests(unittest.TestCase):
         guide.set_device_available = available.append
         guide.set_status = lambda *args: statuses.append(args)
 
-        with patch.object(lightguide_module, "connected_keyboards", return_value=[]):
+        with patch.object(light_guide_module, "connected_keyboards", return_value=[]):
             self.assertFalse(guide.connect())
 
         self.assertEqual(available, [False])
