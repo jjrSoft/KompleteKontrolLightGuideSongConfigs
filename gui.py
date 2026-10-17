@@ -163,13 +163,17 @@ class LightGuideGuiApp:
 
         if hasattr(self, "light_guide"):
             for definition in self._disconnected_keyboard_definitions(devices):
-                model = definition.get("model", "Configured keyboard")
-                serial_number = definition.get("serial", "serial unspecified")
+                model = definition["model"]
+                serial_number = definition.get("serial")
+                label = (
+                    f"{model} (serial {serial_number})"
+                    if serial_number else f"{model} (serial unspecified)"
+                )
                 row = tk.Frame(self.synth_rows, bg=STATUS_COLORS[Status.NONE])
                 row.pack(fill="x", pady=1)
                 tk.Label(
                     row,
-                    text=f"{model} (serial {serial_number})",
+                    text=label,
                     anchor="w",
                     background=STATUS_COLORS[Status.NONE],
                     padx=8,
@@ -190,20 +194,23 @@ class LightGuideGuiApp:
         if not self.light_guide.configuration_valid:
             return []
 
-        definitions = self.light_guide.song_colors.get("keyboards", [])
         disconnected = []
-        for definition in definitions:
-            product_id = keyboard_product_id(definition.get("model"))
-            serial_number = definition.get("serial")
-            if product_id is None:
-                continue
-            if any(
-                    device["product_id"] == product_id
-                    and (serial_number is None
-                         or device.get("serial_number") == serial_number)
-                    for device in devices):
-                continue
-            disconnected.append(definition)
+        seen = set()
+        for bank in self.light_guide.song_colors.get("banks", []):
+            for song in bank.get("songs") or []:
+                for definition in song.get("keyboards", []):
+                    product_id = keyboard_product_id(definition.get("model"))
+                    serial_number = definition.get("serial")
+                    if product_id is None or (product_id, serial_number) in seen:
+                        continue
+                    seen.add((product_id, serial_number))
+                    if any(
+                            device["product_id"] == product_id
+                            and (serial_number is None
+                                 or device.get("serial_number") == serial_number)
+                            for device in devices):
+                        continue
+                    disconnected.append(definition)
         return disconnected
 
     def _start_midi_monitor(self):

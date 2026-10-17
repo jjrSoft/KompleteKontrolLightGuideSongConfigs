@@ -113,40 +113,13 @@ class LightGuide:
             )
             return
 
-        warnings = SongColorsValidator(self.color_table).check_song_name_consistency(
-            self.song_colors
-        )
-        self.validation_errors = warnings
-        self.set_validation_errors(warnings)
-
         self.song_colors_by_pc, self.song_lookup = None, None
         self.middle_c = self.song_colors.get("middleC", "C4")
 
         self.configuration_valid = True
-        if warnings:
-            self.set_status(
-                Status.WARNING,
-                "Warnings found in song colors config.",
-                None,
-                "View Validation Errors"
-            )
-        else:
-            self.set_status(Status.OK, "OK", None, "")
+        self.set_status(Status.OK, "OK", None, "")
 
     def build_song_colors(self):
-        keyboard_definition_errors = self._keyboard_definition_errors()
-        if keyboard_definition_errors:
-            self.validation_errors = keyboard_definition_errors
-            self.configuration_valid = False
-            self.set_validation_errors(keyboard_definition_errors)
-            self.set_status(
-                Status.ERROR,
-                "Errors found in song colors config.",
-                None,
-                "View Validation Errors"
-            )
-            return False
-
         try:
             self.song_colors_by_pc, self.song_lookup = None, None
             for keyboard_device in self.keyboard_devices:
@@ -177,74 +150,72 @@ class LightGuide:
         return True
 
     def _song_colors_for_device(self, keyboard_device):
-        keyboard_definitions = self.song_colors.get("keyboards")
-        if keyboard_definitions is not None:
-            keyboard_definition = self._keyboard_definition_for_device(
-                keyboard_definitions,
-                keyboard_device
-            )
-            if keyboard_definition is not None:
-                return keyboard_definition
-        if "banks" in self.song_colors:
-            return self.song_colors
-        return None
+        return self._song_colors_with_keyboard_light_overrides(
+            self.song_colors,
+            keyboard_device
+        )
+
+    def _song_colors_with_keyboard_light_overrides(self, song_colors, keyboard_device):
+        resolved_banks = []
+        changed = False
+        for bank in song_colors["banks"]:
+            resolved_songs = []
+            for song in bank.get("songs", []):
+                keyboard_lights = song.get("keyboards")
+                if keyboard_lights is None:
+                    resolved_songs.append(song)
+                    continue
+
+                product_id = keyboard_device["product_id"]
+                serial_number = keyboard_device.get("serial_number")
+                model_lights = None
+                serial_lights = None
+                for definition in keyboard_lights:
+                    if keyboard_product_id(definition["model"]) != product_id:
+                        continue
+                    if "serial" in definition:
+                        if definition["serial"] == serial_number:
+                            serial_lights = definition["lights"]
+                    else:
+                        model_lights = definition["lights"]
+
+                lights = (
+                    serial_lights
+                    if serial_lights is not None
+                    else model_lights
+                    if model_lights is not None
+                    else song.get("lights")
+                )
+                if lights is None:
+                    changed = True
+                    continue
+                resolved_song = dict(song)
+                resolved_song.pop("keyboards", None)
+                resolved_song["lights"] = lights
+                resolved_songs.append(resolved_song)
+                changed = True
+
+            resolved_bank = dict(bank)
+            resolved_bank["songs"] = resolved_songs
+            resolved_banks.append(resolved_bank)
+
+        if not changed:
+            return song_colors
+        resolved = dict(song_colors)
+        resolved["banks"] = resolved_banks
+        return resolved
 
     def has_definition_for_device(self, device_info):
         if not self.configuration_valid:
             return False
-        return self._song_colors_for_device({
+        song_colors = self._song_colors_for_device({
             "product_id": device_info["product_id"],
             "serial_number": device_info.get("serial_number"),
-        }) is not None
-
-    def _keyboard_definition_for_device(self, keyboard_definitions, keyboard_device):
-        model_definition = None
-        for definition in keyboard_definitions:
-            model = definition.get("model")
-            if model is None and len(keyboard_definitions) == 1:
-                if definition.get("serial") == keyboard_device["serial_number"]:
-                    return definition
-                if "serial" not in definition:
-                    model_definition = definition
-                continue
-            if keyboard_product_id(model) != keyboard_device["product_id"]:
-                continue
-            if definition.get("serial") == keyboard_device["serial_number"]:
-                return definition
-            if "serial" not in definition:
-                model_definition = definition
-        return model_definition
-
-    def _keyboard_definition_errors(self):
-        keyboard_definitions = self.song_colors.get("keyboards")
-        if keyboard_definitions is None:
-            return []
-
-        errors = []
-        for product_id in {device["product_id"] for device in self.keyboard_devices}:
-            connected_devices = [
-                device for device in self.keyboard_devices
-                if device["product_id"] == product_id
-            ]
-            model_definitions = [
-                definition for definition in keyboard_definitions
-                if keyboard_product_id(definition.get("model")) == product_id
-            ]
-            has_generic_definition = any(
-                "serial" not in definition for definition in model_definitions
-            )
-            has_model_less_definition = (
-                len(keyboard_definitions) == 1
-                and "model" not in keyboard_definitions[0]
-            )
-            if len(connected_devices) > 1 and (
-                    has_generic_definition or has_model_less_definition):
-                errors.append(
-                    f"Multiple connected {KEYBOARDS[product_id]['name']} keyboards "
-                    "require serial numbers in song_colors.yaml"
-                )
-
-        return errors
+        })
+        return any(
+            bank.get("songs")
+            for bank in song_colors.get("banks", [])
+        )
 
     def _song_configuration_error(
             self,

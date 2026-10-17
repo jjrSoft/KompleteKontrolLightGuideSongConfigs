@@ -13,14 +13,10 @@ Designed for live performance use with applications such as VST Live.
 - Automatic keyboard detection with per-model key counts and Light Guide protocols
 - Inline keyboard rows showing each connected model, serial number, and configuration status
 - MIDI-driven configuration (song) selection from YAML-based definitions
-
-
-  - Definitions for the Light Guide are loaded from `song_colors.yaml` in the application folder.
-  - Supports named colors (from `colors.yaml`), RGB hex values, and integer RGB values.
-
+- Supports named colors (from `colors.yaml`), RGB hex values, integer RGB values, and RGB lists.
 - Validation of YAML structure, MIDI ranges, duplicate definitions, and overlapping light ranges
-- By default, `song_colors.yaml` is loaded from the application folder. The `Load` button opens a file dialog so you can load a different song colors YAML file without restarting the app.
-- `Reload` reloads both `colors.yaml` and `song_colors.yaml` from the currently loaded path.
+- By default, song definitions are loaded from `song_colors.yaml` in the application folder. The `Load` button opens a file dialog so you can select another song colors YAML file without restarting the app.
+- `Reload` reloads `colors.yaml` and the currently selected song colors file.
 - The label next to the buttons shows the file name of the currently loaded song colors configuration.
 - The last folder used in the `Load` dialog is remembered across restarts in `app_settings.json`.
 - Fast lookup using precompiled `(bank MSB, program)` mappings
@@ -85,7 +81,7 @@ The GUI looks like this:
   * The status of each keyboard and its Light Guide definition appears at the end of the line.
     * A green `OK` badge means a matching definition exists.
     * A yellow badge means the connected keyboard has no definition.
-    * A configured model/serial pair that is not currently connected appears with a red `Not connected` badge, alongside any connected keyboard of that model.
+    * A model/serial pair configured under a song's `keyboards` list that is not currently connected appears with a red `Not connected` badge, alongside any connected keyboard of that model.
   * The application scans regularly for connected keyboards, so a newly connected keyboard will appear in the list shortly.
 * The status bar at the bottom displays the general status.
   * If there are issues, the status bar turns yellow or red, and a link appears on the right to open a dialog listing the problems.
@@ -199,22 +195,20 @@ The song definitions for the Light Guide are stored in a YAML file.
 By default, the application loads `song_colors.yaml` from the same directory as the source script or executable.
 You can load any YAML file manually from the GUI.
 
-### Single-Keyboard Setup
+### Song and Bank Definitions
 
-For a single-keyboard setup, the YAML file can be quite simple.
+The required root-level `banks` list defines how Light Guide colors are set for each song, based on banks and program numbers.
 
-The root-level `banks` list provides shared default banks for every connected keyboard.
-
-Each bank has a bank select `msb` value. Within each bank is a list of `songs`, each with a `title`, a program change number (`pc`), and a `lights` entry. The `lights` entry is a list of zones and colors that defines the Light Guide appearance.
+Each bank has a bank select `msb` value. Within each bank is a list of `songs`, each with a `title` and program change number (`pc`). A song can define a common `lights` map, keyboard-specific maps, or both.
 
 Program change (`pc`) and bank selection MSB (`msb`, CC0) values are by default zero-based MIDI values from `0` to `127`. Many hosts display banks and/or programs starting from 1. Set the optional top-level entries `oneBasedBanks: true` and/or `oneBasedPrograms: true` to write `msb` and/or `pc` values from `1` to `128` instead. Each entry is independent and defaults to `false`.
 The bank selection LSB is currently unused and is treated as `0`.
 
+Each song can have a `lights` mapping of note ranges to colors. This map is the default for keyboards without a matching keyboard-specific entry. Alternatively, or in addition, a song can define a `keyboards` list with separate light maps for specific keyboard models or serial numbers.
+
 Zones are note ranges written from the lowest to the highest note, with the notes separated by a dash. Each note uses the format `[A-G]number`. Normally, middle C is `C4`, but MIDI note-naming conventions differ. The optional top-level `middleC` entry lets you specify which note represents middle C (MIDI note 60). Common alternatives are `C3` and `C5`. Negative octave numbers are also allowed, but all notes must resolve to MIDI note numbers from `0` to `127`.
 
 The Light Guide illuminates all keys between and including the lowest and highest notes with the specified color. In addition to named colors, several other formats are supported, as described in [Supported Color Formats](#supported-color-formats).
-
-Example:
 
 ```yaml
 # Comments beginning with a hash are supported.
@@ -229,7 +223,7 @@ oneBasedPrograms: true
 
 banks:
 
-  - msb: 0
+  - msb: 1
     songs:
 
       - title: Song A
@@ -252,44 +246,27 @@ banks:
 
 ### Multi-Keyboard Setup
 
-For multi-keyboard setups, you may need to distinguish between keyboards. If you want to apply the same Light Guide zone settings to all keyboards, you can use only the root-level `banks` list. Otherwise, use a `keyboards` entry containing a `banks` list for each keyboard. The application identifies each keyboard by `model` and, optionally, `serial` when multiple keyboards of the same model are connected. The model must be one of the recognized models.
+To customize a song's lights for multiple keyboards, add a `keyboards` list under that song. Each entry has a recognized `model`, an optional `serial` to distinguish keyboards of the same model, and its `lights` map.
 
-A top-level `banks` list serves as the default for any keyboard that does not match the model and serial number in a `keyboards` entry.
+The song's `lights` map is an optional default for keyboard models without a matching entry. If there is no default, only the keyboards listed under that song receive colors for it.
 
 ```yaml
-middleC: C3
-
-keyboards:
-  - model: S88 MK1
-    banks:
-      - msb: 0
-        songs:
-          - title: Song A
-            pc: 1
-            lights:
-              C1-C3: blue
-
-  - model: S61 MK1
-    serial: "6C0811AD"
-    banks:
-      - msb: 0
-        songs:
-          - title: Song A
-            pc: 1
+banks:
+  - msb: 0
+    songs:
+      - title: Song A
+        pc: 1
+        keyboards:
+          - model: S61 MK1
+            serial: "6C0811AD"
             lights:
               C1-C3: red
-
-  # A second S61 MK1 needs its own serial number.
-  - model: S61 MK1
-    serial: "ANOTHER_S61_SERIAL"
-    banks:
-      - msb: 0
-        songs:
-          - title: Song A
-            pc: 1
+          - model: S88 MK1
             lights:
-              C1-C3: yellow
+              A0-C7: blue
 ```
+
+*NB* Top-level `keyboards` in version 1.1.0 has been deprecated and is not supported any more.
 
 ## Supported Color Formats
 
@@ -392,10 +369,9 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE).
 
 - **1.1.0**
   - Added support for multiple keyboards with per-keyboard light configurations, including multiple keyboards of the same model via serial number.
-  - Added a live list of connected keyboards with status badges: OK, Warning, or Not connected. The Not connected badge appears when the configuration requests a specific device that is not present. Typos and unsupported models are not shown because they cannot be resolved.
+  - Added a live list of connected keyboards with status badges showing whether a matching definition is available.
   - Renamed the `Reload Song Colors` button to `Reload`; added a label showing the currently loaded song colors file name and a `Load` button for selecting any song colors YAML file via a file dialog. The last-used folder is remembered in `app_settings.json`.
   - Improved YAML validation and error handling.
-  - Added warnings for mismatching song names when the same bank/PC is defined for multiple keyboards.
   - Renamed the IAC MIDI port to `KompleteKontrolLightGuide` and renamed the script and related files from `komplete_lightguide*` to `komplete_kontrol_lightguide*`.
   - Adopted semantic versioning.
 

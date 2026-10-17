@@ -1,7 +1,11 @@
+import re
+import sys
 import unittest
 from pathlib import Path
-import sys
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
+
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -23,6 +27,91 @@ class FakeHidDevice:
 
 
 class MultiKeyboardTests(unittest.TestCase):
+    def test_gui_lists_configured_keyboards_that_are_not_connected(self):
+        import gui
+
+        app = gui.LightGuideGuiApp.__new__(gui.LightGuideGuiApp)
+        app.light_guide = type("Guide", (), {})()
+        app.light_guide.configuration_valid = True
+        app.light_guide.song_colors = {"banks": [
+            {"msb": 0, "songs": [
+                {"title": "A", "pc": 0, "keyboards": [
+                    {"model": "S61 MK1", "serial": "FIRST", "lights": {}},
+                    {"model": "S61 MK1", "serial": "MISSING", "lights": {}},
+                    {"model": "S88 MK1", "lights": {}},
+                ]},
+                {"title": "B", "pc": 1, "keyboards": [
+                    {"model": "S61 MK1", "serial": "MISSING", "lights": {}},
+                ]},
+            ]},
+            {"msb": 1},
+        ]}
+
+        missing = app._disconnected_keyboard_definitions([
+            {"product_id": 0x1360, "serial_number": "FIRST"},
+            {"product_id": 0x1410, "serial_number": "ANY"},
+        ])
+
+        self.assertEqual(
+            [(item["model"], item.get("serial")) for item in missing],
+            [("S61 MK1", "MISSING")]
+        )
+
+    def test_song_colors_yaml_and_readme_examples_are_valid(self):
+        repository_root = Path(lightguide_module.__file__).resolve().parent
+        color_table = lightguide_module.ColorTable(repository_root / "colors.yaml")
+        validator = lightguide_module.SongColorsValidator(color_table)
+
+        song_colors = yaml.safe_load(
+            (repository_root / "song_colors.yaml").read_text()
+        )
+        self.assertEqual(validator.validate(song_colors), [])
+
+        readme = (repository_root / "README.md").read_text()
+        yaml_blocks = re.findall(r"```yaml\s*\n(.*?)\n```", readme, re.DOTALL)
+        self.assertTrue(yaml_blocks, "README should contain YAML examples")
+        config_examples = []
+
+        for index, block in enumerate(yaml_blocks, start=1):
+            with self.subTest(readme_yaml_block=index):
+                parsed = yaml.safe_load(block)
+                if isinstance(parsed, dict) and "banks" in parsed:
+                    config_examples.append(parsed)
+                    self.assertEqual(validator.validate(parsed), [])
+
+        self.assertGreaterEqual(
+            len(config_examples),
+            2,
+            "README should contain full and multi-keyboard song config examples"
+        )
+
+    def test_load_song_colors_reports_malformed_yaml(self):
+        with TemporaryDirectory() as temporary_directory:
+            song_colors_file = Path(temporary_directory) / "song_colors.yaml"
+            song_colors_file.write_text("banks:\n  - msb: [\n")
+            statuses = []
+            validation_errors = []
+            guide = lightguide_module.LightGuide.__new__(
+                lightguide_module.LightGuide
+            )
+            guide.song_colors_file = song_colors_file
+            guide.configuration_valid = True
+            guide.set_status = lambda *args: statuses.append(args)
+            guide.set_validation_errors = lambda errors: validation_errors.append(errors)
+
+            guide.load_song_colors()
+
+            self.assertFalse(guide.configuration_valid)
+            self.assertEqual(validation_errors, [[]])
+            self.assertEqual(
+                statuses[0][:2],
+                (
+                    lightguide_module.Status.ERROR,
+                    "Invalid YAML in song colors file: song_colors.yaml",
+                )
+            )
+            self.assertIn(str(song_colors_file.resolve()), statuses[0][2])
+
     def test_configuration_error_can_preserve_validation_errors(self):
         guide = lightguide_module.LightGuide.__new__(lightguide_module.LightGuide)
         guide.song_colors_by_pc = {}
@@ -55,70 +144,14 @@ class MultiKeyboardTests(unittest.TestCase):
             Path(lightguide_module.__file__).with_name("colors.yaml")
         )
         errors = lightguide_module.SongColorsValidator(color_table).validate({
-            "unknown": True,
+            "keyboards": [{"model": "S61 MK1", "banks": []}],
             "banks": [],
-            "keyboards": [{
-                "model": "S61 MK1",
-                "unknown": True,
-                "banks": [{"msb": 0, "unknown": True, "songs": []}],
-            }],
         })
 
         self.assertEqual(errors, [
-            "Top level has an unknown key: unknown",
-            "Default 'banks' must not be empty",
-            "Keyboard #1 has an unknown key: unknown",
-            "Bank #1 has an unknown key: unknown",
+            "Top level has an unknown key: keyboards",
+            "'banks' must not be empty",
         ])
-
-    def test_mismatched_song_names_across_keyboards_are_warnings(self):
-        color_table = lightguide_module.ColorTable(
-            Path(lightguide_module.__file__).with_name("colors.yaml")
-        )
-        song_colors = {
-            "keyboards": [
-                {"model": "S61 MK1", "serial": "FIRST", "banks": [{"msb": 0, "songs": [{
-                    "title": "Song A", "pc": 1, "lights": {"C1-C1": "red"},
-                }]}]},
-                {"model": "S88 MK1", "serial": "SECOND", "banks": [{"msb": 0, "songs": [{
-                    "title": "Song B", "pc": 1, "lights": {"C1-C1": "blue"},
-                }]}]},
-            ],
-        }
-
-        self.assertEqual(
-            lightguide_module.SongColorsValidator(color_table).validate(song_colors),
-            []
-        )
-        self.assertEqual(
-            lightguide_module.SongColorsValidator(color_table)
-                .check_song_name_consistency(song_colors),
-            [
-                "Bank MSB 0 PC 1 has mismatched song names across keyboards: "
-                "S61 MK1 (serial FIRST): 'Song A', S88 MK1 (serial SECOND): 'Song B'"
-            ]
-        )
-
-    def test_matching_song_names_across_keyboards_produce_no_warnings(self):
-        color_table = lightguide_module.ColorTable(
-            Path(lightguide_module.__file__).with_name("colors.yaml")
-        )
-        song_colors = {
-            "keyboards": [
-                {"model": "S61 MK1", "serial": "FIRST", "banks": [{"msb": 0, "songs": [{
-                    "title": "Song A", "pc": 1, "lights": {"C1-C1": "red"},
-                }]}]},
-                {"model": "S88 MK1", "serial": "SECOND", "banks": [{"msb": 0, "songs": [{
-                    "title": "Song A", "pc": 1, "lights": {"C1-C1": "blue"},
-                }]}]},
-            ],
-        }
-
-        self.assertEqual(
-            lightguide_module.SongColorsValidator(color_table)
-                .check_song_name_consistency(song_colors),
-            []
-        )
 
     def test_validator_allows_empty_or_omitted_song_lists(self):
         color_table = lightguide_module.ColorTable(
@@ -175,6 +208,190 @@ class MultiKeyboardTests(unittest.TestCase):
         self.assertEqual(song_lookup, {(1, 0, 2): "Song"})
         self.assertEqual(preset_lookup[(1, 0, 2)][24 * 3:24 * 3 + 3], [255, 0, 0])
 
+    def test_song_first_keyboard_light_maps_override_the_default(self):
+        guide = lightguide_module.LightGuide.__new__(lightguide_module.LightGuide)
+        guide.middle_c = "C3"
+        guide.color_table = lightguide_module.ColorTable(
+            Path(lightguide_module.__file__).with_name("colors.yaml")
+        )
+        guide.song_colors = {
+            "banks": [{
+                "msb": 0,
+                "songs": [{
+                    "title": "Song",
+                    "pc": 0,
+                    "lights": {"C3-C3": "green"},
+                    "keyboards": [
+                        {
+                            "model": "S61 MK1",
+                            "serial": "FIRST",
+                            "lights": {"C3-C3": "red"},
+                        },
+                        {
+                            "model": "S61 MK1",
+                            "serial": "SECOND",
+                            "lights": {"C3-C3": "blue"},
+                        },
+                    ],
+                }],
+            }],
+        }
+        self.assertEqual(
+            lightguide_module.SongColorsValidator(guide.color_table).validate(
+                guide.song_colors
+            ),
+            []
+        )
+        guide.keyboard_devices = [
+            {
+                "product_id": product_id,
+                "serial_number": serial,
+                "keycount": keycount,
+                "note_offset": note_offset,
+                "mode": "MK1",
+                "hid_device": FakeHidDevice(),
+            }
+            for product_id, serial, keycount, note_offset in (
+                (0x1360, "FIRST", 61, 36),
+                (0x1360, "SECOND", 61, 36),
+                (0x1410, "THIRD", 88, 21),
+            )
+        ]
+        guide.set_status = lambda *args: None
+
+        self.assertTrue(guide.build_song_colors())
+        self.assertIn(
+            "keyboards",
+            guide.song_colors["banks"][0]["songs"][0]
+        )
+        self.assertTrue(guide.send_colors(0, 0, 0))
+        expected_colors = ([255, 0, 0], [0, 0, 255], [0, 255, 0])
+        for keyboard, expected_color, key_index in zip(
+                guide.keyboard_devices,
+                expected_colors,
+                (24, 24, 39)):
+            packet = keyboard["hid_device"].packets[-1]
+            start = 1 + key_index * 3
+            self.assertEqual(packet[start:start + 3], expected_color)
+
+    def test_song_first_keyboard_maps_reject_unknown_models(self):
+        color_table = lightguide_module.ColorTable(
+            Path(lightguide_module.__file__).with_name("colors.yaml")
+        )
+        errors = lightguide_module.SongColorsValidator(color_table).validate({
+            "banks": [{
+                "msb": 0,
+                "songs": [{
+                    "title": "Song",
+                    "pc": 0,
+                    "lights": {"C3-C3": "green"},
+                    "keyboards": [{
+                        "model": "Unknown Keyboard",
+                        "lights": {"C3-C3": "red"},
+                    }],
+                }],
+            }],
+        })
+
+        self.assertIn(
+            "Bank #1 PC 0 keyboard #1 'model' must be a recognized keyboard model",
+            errors
+        )
+
+    def test_song_without_default_lights_only_targets_listed_keyboards(self):
+        guide = lightguide_module.LightGuide.__new__(lightguide_module.LightGuide)
+        guide.middle_c = "C3"
+        guide.color_table = lightguide_module.ColorTable(
+            Path(lightguide_module.__file__).with_name("colors.yaml")
+        )
+        guide.song_colors = {
+            "banks": [{
+                "msb": 0,
+                "songs": [{
+                    "title": "S61 and S88 only",
+                    "pc": 0,
+                    "keyboards": [{
+                        "model": "S61 MK1",
+                        "lights": {"C3-C3": "red"},
+                    }, {
+                        "model": "S88 MK1",
+                        "lights": {"C3-C3": "blue"},
+                    }],
+                }],
+            }],
+        }
+        self.assertEqual(
+            lightguide_module.SongColorsValidator(guide.color_table).validate(
+                guide.song_colors
+            ),
+            []
+        )
+        guide.keyboard_devices = [
+            {
+                "product_id": product_id,
+                "serial_number": None,
+                "keycount": keycount,
+                "note_offset": note_offset,
+                "mode": "MK1",
+                "hid_device": FakeHidDevice(),
+            }
+            for product_id, keycount, note_offset in (
+                (0x1360, 61, 36),
+                (0x1410, 88, 21),
+                (0x1630, 88, 21),
+            )
+        ]
+        guide.set_status = lambda *args: None
+
+        guide.configuration_valid = True
+        self.assertTrue(guide.has_definition_for_device({"product_id": 0x1360}))
+        self.assertTrue(guide.has_definition_for_device({"product_id": 0x1410}))
+        self.assertFalse(guide.has_definition_for_device({"product_id": 0x1630}))
+
+        self.assertTrue(guide.build_song_colors())
+        self.assertEqual(
+            [device["song_colors_by_pc"] for device in guide.keyboard_devices],
+            [
+                {(0, 0, 0): unittest.mock.ANY},
+                {(0, 0, 0): unittest.mock.ANY},
+                {},
+            ]
+        )
+        self.assertTrue(guide.send_colors(0, 0, 0))
+        self.assertEqual(
+            [len(device["hid_device"].packets) for device in guide.keyboard_devices],
+            [1, 1, 0]
+        )
+        self.assertEqual(
+            guide.keyboard_devices[0]["hid_device"].packets[0][1 + 24 * 3:1 + 24 * 3 + 3],
+            [255, 0, 0]
+        )
+        self.assertEqual(
+            guide.keyboard_devices[1]["hid_device"].packets[0][1 + 39 * 3:1 + 39 * 3 + 3],
+            [0, 0, 255]
+        )
+
+    def test_validator_rejects_top_level_keyboard_definitions(self):
+        color_table = lightguide_module.ColorTable(
+            Path(lightguide_module.__file__).with_name("colors.yaml")
+        )
+        errors = lightguide_module.SongColorsValidator(color_table).validate({
+            "banks": [{
+                "msb": 0,
+                "songs": [{
+                    "title": "Song",
+                    "pc": 0,
+                    "lights": {"C3-C3": "green"},
+                }],
+            }],
+            "keyboards": [{"model": "S88 MK1", "banks": []}],
+        })
+
+        self.assertIn(
+            "Top level has an unknown key: keyboards",
+            errors
+        )
+
     def test_validator_rejects_incomplete_song_and_boolean_color(self):
         color_table = lightguide_module.ColorTable(
             Path(lightguide_module.__file__).with_name("colors.yaml")
@@ -192,143 +409,6 @@ class MultiKeyboardTests(unittest.TestCase):
             "Bank #1 PC 1 has an invalid color: True",
         ])
 
-    def test_default_banks_apply_when_no_keyboard_definition_matches(self):
-        banks = [{"msb": 0, "songs": [{
-            "title": "Song", "pc": 0, "lights": {"C1-C1": "red"},
-        }]}]
-        default_definition = {"banks": banks}
-        specific_definition = {"model": "S61 MK1", "serial": "SECOND", "banks": banks}
-        song_colors = {
-            **default_definition,
-            "keyboards": [specific_definition],
-        }
-        color_table = lightguide_module.ColorTable(
-            Path(lightguide_module.__file__).with_name("colors.yaml")
-        )
-        self.assertEqual(
-            lightguide_module.SongColorsValidator(color_table).validate(song_colors),
-            []
-        )
-
-        guide = lightguide_module.LightGuide.__new__(lightguide_module.LightGuide)
-        guide.song_colors = song_colors
-        guide.configuration_valid = True
-        first_keyboard = {"product_id": 0x1360, "serial_number": "FIRST"}
-        second_keyboard = {"product_id": 0x1360, "serial_number": "SECOND"}
-        guide.keyboard_devices = [first_keyboard, second_keyboard]
-
-        self.assertTrue(guide.has_definition_for_device(first_keyboard))
-        self.assertTrue(guide.has_definition_for_device(second_keyboard))
-        self.assertIs(guide._song_colors_for_device(first_keyboard), song_colors)
-        self.assertIs(
-            guide._song_colors_for_device(second_keyboard),
-            specific_definition
-        )
-
-    def test_single_keyboard_definition_can_omit_model(self):
-        song_colors = {
-            "keyboards": [{
-                "serial": "ONLY",
-                "banks": [{"msb": 0, "songs": [{
-                    "title": "Song", "pc": 0, "lights": {"C1-C1": "red"},
-                }]}],
-            }],
-        }
-        color_table = lightguide_module.ColorTable(
-            Path(lightguide_module.__file__).with_name("colors.yaml")
-        )
-        self.assertEqual(
-            lightguide_module.SongColorsValidator(color_table).validate(song_colors),
-            []
-        )
-
-        guide = lightguide_module.LightGuide.__new__(lightguide_module.LightGuide)
-        guide.song_colors = song_colors
-        guide.keyboard_devices = [{"product_id": 0x1360, "serial_number": "ONLY"}]
-        self.assertIs(
-            guide._song_colors_for_device(guide.keyboard_devices[0]),
-            song_colors["keyboards"][0]
-        )
-
-    def test_duplicate_connected_models_require_serial_entries(self):
-        guide = lightguide_module.LightGuide.__new__(lightguide_module.LightGuide)
-        guide.song_colors = {
-            "keyboards": [{
-                "model": "S61 MK1",
-                "banks": [{"msb": 0, "songs": [{
-                    "title": "Song", "pc": 0, "lights": {"C1-C1": "red"},
-                }]}],
-            }],
-        }
-        guide.keyboard_devices = [
-            {"product_id": 0x1360},
-            {"product_id": 0x1360},
-        ]
-        guide.validation_errors = []
-        guide.configuration_valid = True
-        guide.set_validation_errors = lambda errors: None
-        guide.set_status = lambda *args: None
-
-        self.assertFalse(guide.build_song_colors())
-        self.assertEqual(
-            guide.validation_errors,
-            [
-                "Multiple connected Komplete Kontrol S61 MK1 keyboards "
-                "require serial numbers in song_colors.yaml"
-            ]
-        )
-
-    def test_disconnected_models_and_serials_are_allowed(self):
-        guide = lightguide_module.LightGuide.__new__(lightguide_module.LightGuide)
-        guide.song_colors = {
-            "keyboards": [
-                {"model": "S88 MK1", "banks": [{"msb": 0, "songs": [{
-                    "title": "Song", "pc": 0, "lights": {"C1-C1": "red"},
-                }]}]},
-                {"model": "S61 MK1", "serial": "WRONG", "banks": [{"msb": 0, "songs": [{
-                    "title": "Song", "pc": 0, "lights": {"C1-C1": "red"},
-                }]}]},
-            ],
-        }
-        guide.keyboard_devices = [{"product_id": 0x1360, "serial_number": "RIGHT"}]
-
-        self.assertEqual(guide._keyboard_definition_errors(), [])
-
-    def test_identifies_configured_keyboard_that_is_not_connected(self):
-        guide = lightguide_module.LightGuide.__new__(lightguide_module.LightGuide)
-        guide.configuration_valid = True
-        guide.song_colors = {
-            "keyboards": [
-                {"model": "S61 MK1", "serial": "CONNECTED"},
-                {"model": "S88 MK1", "serial": "DISCONNECTED"},
-            ],
-        }
-        app = lightguide_module.LightGuideGuiApp.__new__(lightguide_module.LightGuideGuiApp)
-        app.light_guide = guide
-
-        self.assertEqual(
-            app._disconnected_keyboard_definitions([
-                {"product_id": 0x1360, "serial_number": "CONNECTED"},
-            ]),
-            [{"model": "S88 MK1", "serial": "DISCONNECTED"}]
-        )
-
-    def test_identifies_expected_serial_that_is_not_connected(self):
-        guide = lightguide_module.LightGuide.__new__(lightguide_module.LightGuide)
-        guide.configuration_valid = True
-        guide.song_colors = {
-            "keyboards": [{"model": "S61 MK1", "serial": "EXPECTED"}],
-        }
-        app = lightguide_module.LightGuideGuiApp.__new__(lightguide_module.LightGuideGuiApp)
-        app.light_guide = guide
-
-        self.assertEqual(
-            app._disconnected_keyboard_definitions([
-                {"product_id": 0x1360, "serial_number": "ACTUAL"},
-            ]),
-            [{"model": "S61 MK1", "serial": "EXPECTED"}]
-        )
-
     def test_same_model_keyboards_use_serial_entries(self):
         device_info = [
             {"product_id": 0x1360, "path": b"keyboard-one", "serial_number": "FIRST"},
@@ -345,14 +425,14 @@ class MultiKeyboardTests(unittest.TestCase):
             Path(lightguide_module.__file__).with_name("colors.yaml")
         )
         guide.song_colors = {
-            "keyboards": [
-                {"model": "S61 MK1", "serial": "FIRST", "banks": [{"msb": 0, "songs": [{
-                    "pc": 1, "title": "First", "lights": {"C1-C1": "red"},
-                }]}]},
-                {"model": "S61 MK1", "serial": "SECOND", "banks": [{"msb": 0, "songs": [{
-                    "pc": 1, "title": "Second", "lights": {"C1-C1": "blue"},
-                }]}]},
-            ],
+            "banks": [{"msb": 0, "songs": [{
+                "pc": 1,
+                "title": "Song",
+                "keyboards": [
+                    {"model": "S61 MK1", "serial": "FIRST", "lights": {"C1-C1": "red"}},
+                    {"model": "S61 MK1", "serial": "SECOND", "lights": {"C1-C1": "blue"}},
+                ],
+            }]}],
         }
         self.assertEqual(
             lightguide_module.SongColorsValidator(guide.color_table).validate(
@@ -388,18 +468,26 @@ class MultiKeyboardTests(unittest.TestCase):
             Path(lightguide_module.__file__).with_name("colors.yaml")
         )
         guide.song_colors = {
-            "keyboards": [
-                {"model": "S61 MK1", "serial": "FIRST", "banks": [{
-                    "msb": 0, "songs": [{
-                        "title": "First", "pc": 0, "lights": {"C3-C3": "red"},
+            "banks": [{"msb": 0, "songs": [
+                {
+                    "title": "First",
+                    "pc": 0,
+                    "keyboards": [{
+                        "model": "S61 MK1",
+                        "serial": "FIRST",
+                        "lights": {"C3-C3": "red"},
                     }],
-                }]},
-                {"model": "S61 MK1", "serial": "SECOND", "banks": [{
-                    "msb": 0, "songs": [{
-                        "title": "Second", "pc": 1, "lights": {"C3-C3": "blue"},
+                },
+                {
+                    "title": "Second",
+                    "pc": 1,
+                    "keyboards": [{
+                        "model": "S61 MK1",
+                        "serial": "SECOND",
+                        "lights": {"C3-C3": "blue"},
                     }],
-                }]},
-            ],
+                },
+            ]}],
         }
         guide.keyboard_devices = [
             {
@@ -441,18 +529,14 @@ class MultiKeyboardTests(unittest.TestCase):
             Path(lightguide_module.__file__).with_name("colors.yaml")
         )
         guide.song_colors = {
-            "keyboards": [
-                {"model": "S61 MK1", "serial": "MK1", "banks": [{
-                    "msb": 0, "songs": [{
-                        "pc": 0, "title": "Song", "lights": {"C3-C3": "red"},
-                    }],
-                }]},
-                {"model": "S88 MK2", "serial": "MK2", "banks": [{
-                    "msb": 0, "songs": [{
-                        "pc": 0, "title": "Song", "lights": {"C3-C3": "red"},
-                    }],
-                }]},
-            ],
+            "banks": [{"msb": 0, "songs": [{
+                "pc": 0,
+                "title": "Song",
+                "keyboards": [
+                    {"model": "S61 MK1", "serial": "MK1", "lights": {"C3-C3": "red"}},
+                    {"model": "S88 MK2", "serial": "MK2", "lights": {"C3-C3": "red"}},
+                ],
+            }]}],
         }
 
         def create_hid_device():

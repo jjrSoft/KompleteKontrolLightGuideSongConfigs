@@ -8,127 +8,341 @@
 middleC: C3
 
 # Optional one-based indexing for banks and programs. Default is false (zero-based).
-oneBasedBanks: true
+oneBasedBanks: false
 oneBasedPrograms: true
+banks:
+- bank: My songs
+  msb: 0
+  songs:
 
-# Root-level `banks` are a shared default applied to every connected keyboard.
+  - title: Omnipocus
+    pc: 1
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C1-C2: yellow
+        C#2-B2: orange
+        C3-D4: teal
+        D#4-E8: blue
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
-# banks:
-#   - bank: Common
-#     msb: 0
-#     songs: 
+  - title: Willow Creek I Overture
+    pc: 10
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C-2-F2: yellow
+        F#2-F4: orange
+        F#4-B5: blue
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
-#     - title: Omnipocus
-#       pc: 0
-#       lights:
-#         C1-C2: yellow
-#         C#2-B2: orange
-#         C3-D4: teal
-#         D#4-E8: blue
+  - title: Willow Creek II Motor Meet
+    pc: 11
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C-2-F2: yellow
+        F#2-F4: orange
+        F#4-B5: blue
+    - model: S88 MK1
+      lights:
+        A-1-C7: green
 
-# When a matching keyboard entry exists below, its `banks` override the default.
-keyboards:
-  # When the keyboards list has only one entry, `model` is optional.
-  # When it has multiple entries, every entry requires `model`.
-  - model: S61 MK1
-    # Add `serial` to distinguish same-model keyboards. It is required when
-    # multiple keyboards of this model are connected.
-    #serial: "6C0811AD"
-    banks: &shared_banks
+  - title: Willow Creek III The Road To Willow Creek
+    pc: 24
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C-2-B5: green
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
-      # `bank` is a display name; `msb` and `songs` are required.
-      - bank: My songs
-        msb: 0
+  - title: Willow Creek IV Millie's Diner
+    pc: 25
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C-2-B3: orange
+        C4-B5: blue
+    - model: S88 MK1
+      lights:
+        A-1-C7: violet
 
-        songs:
+  - title: Willow Creek V Homeward Bound VI The Looping Roads
+    pc: 26
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C-2-F#4: orange
+        G4-B5: blue
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
-          - title: Omnipocus
-            pc: 0
-            lights:
-              C1-C2: yellow
-              C#2-B2: orange
-              C3-D4: teal
-              D#4-E8: blue
+  - title: Willow Creek VII Stuck In 1956
+    pc: 27
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C-2-B5: orange
+    - model: S88 MK1
+      lights:
+        A-1-C7: violet
 
-          - title: The Road To Willow Creek part 1
-            pc: 9
-            lights:
-              C-2-F2: yellow
-              F#2-F4: orange
-              F#4-B5: blue
+  - title: Willow Creek VIII Finale
+    pc: 28
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C-2-F#4: orange
+        G4-B5: blue
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
+- bank: Covers
+  msb: 1
+  songs:
 
-          - title: The Road To Willow Creek part 2
-            pc: 10
-            lights:
-              C0-C6: 0xD000FF
-              # C1-C#2: yellow
-              # D2-C#3: orange
-              # D3-G3: red
-              # G#3-A4: blue
-              # Bb4-C5: green
-              # C#5-E5: violet
+  - title: No Zones
+    pc: 1
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: lime
 
-      - bank: Covers
-        msb: 1
+  - title: Black Friday
+    pc: 7
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
-        songs:
+  - title: Contusion
+    pc: 8
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
-          - title: No Zones
-            pc: 0
-            lights:
-              C0-C6: lime
+  - title: Digital Man
+    pc: 2
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C-1-G1: red
+        G#1-B4: violet
+        C5-F#8: blue
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
-          - title: Digital Man
-            pc: 1
-            lights:
-              C-1-G1: red
-              G#1-B4: violet
-              C5-F#8: blue
+  - title: Get Closer
+    pc: 9
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
-          - title: I'm Gonna Tear Your Playhouse Down
-            pc: 2
-            lights:
-              C1-A2: blue
-              A#2-A3: green
-              A#3-F4: yellow
-              F#4-B5: orange # also in A#3-F4
+  - title: Goodbye Yellow Brick Road
+    pc: 10
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: green
 
-          - title: Murder By Numbers
-            pc: 3
-            lights:
-              C0-B1: blue
-              C2-C7: green
+  - title: Imagine
+    pc: 11
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: violet
 
-          - title: Synchronicity 2
-            pc: 4
-            lights:
-              C#-1-D#2: yellow
-              E2-F#8: blue
+  - title: I'm Gonna Tear Your Playhouse Down
+    pc: 3
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-B0: orange
+        C1-C6: red
+    - model: S88 MK1
+      lights:
+        C1-A2: blue
+        A#2-A3: green
+        A#3-F4: yellow
+        F#4-B5: orange
 
-          - title: Telstar
-            pc: 5
-            lights:
-              C#-2-B2: blue
-              C3-F#8: green
+  - title: Josie
+    pc: 12
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
-  # This S88 uses the same bank definitions as the S61 above.
-  - model: S88 MK1
-    # serial: "9F1C6D44"
-    
-    # It is possible to reference the shared bank definitions from the S61 above. 
-    # In that case, do not redefine the banks manually.
-    #banks: *shared_banks
+  - title: Led Boots
+    pc: 13
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: orange
 
-    banks:
-      - bank: My songs
-        msb: 0
+  - title: Maybe I'm A Leo
+    pc: 14
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
-        songs:
+  - title: Murder By Numbers
+    pc: 4
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-B1: blue
+        C2-C7: green
+    - model: S88 MK1
+      lights:
+        A-1-C7: pink
 
-          - title: Omnipocus
-            pc: 0
-            lights:
-              C1-E8: blue
+  - title: Nutbush City Limits
+    pc: 15
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: orange
 
+  - title: Peaches En Regalia
+    pc: 16
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: green
 
+  - title: Pictures Of Home
+    pc: 17
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
 
+  - title: River Deep Mountain High
+    pc: 18
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
+
+  - title: Sir Duke
+    pc: 19
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
+
+  - title: Spirits In The Material World
+    pc: 23
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
+
+  - title: Synchronicity 2
+    pc: 5
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C#-1-D#2: yellow
+        E2-F#8: blue
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
+
+  - title: Telstar
+    pc: 6
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C#-2-B2: blue
+        C3-F#8: green
+    - model: S88 MK1
+      lights:
+        A-1-C7: teal
+
+  - title: Too Much To Lose
+    pc: 20
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue
+
+  - title: Turn It On Again
+    pc: 21
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: violet
+
+  - title: What's Going On
+    pc: 22
+    keyboards:
+    - model: S61 MK1
+      lights:
+        C0-C6: lime
+    - model: S88 MK1
+      lights:
+        A-1-C7: blue

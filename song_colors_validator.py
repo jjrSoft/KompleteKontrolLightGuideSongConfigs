@@ -21,22 +21,18 @@ class SongColorsValidator:
         self.program_base = 1 if data.get("oneBasedPrograms") is True else 0
         self._validate_song_metadata(data, errors)
         if "banks" in data:
-            self._validate_banks(data["banks"], errors, "Default ")
-        if "keyboards" in data:
-            self._validate_keyboard_definitions(data["keyboards"], errors)
-        elif "banks" not in data:
-            self._validate_banks(data.get("banks"), errors)
+            self._validate_banks(data["banks"], errors)
         return errors
 
     def _validate_song_metadata(self, data, errors):
         self._validate_unknown_keys(
             data,
-            {"middleC", "oneBasedBanks", "oneBasedPrograms", "banks", "keyboards"},
+            {"middleC", "oneBasedBanks", "oneBasedPrograms", "banks"},
             "Top level",
             errors
         )
-        if "banks" not in data and "keyboards" not in data:
-            errors.append("Missing required top-level key: banks or keyboards")
+        if "banks" not in data:
+            errors.append("Missing required top-level key: banks")
 
         for key in ("oneBasedBanks", "oneBasedPrograms"):
             if key in data and not isinstance(data[key], bool):
@@ -46,56 +42,6 @@ class SongColorsValidator:
         if middle_c is not None and not self._valid_note(middle_c):
             errors.append("'middleC' must be a valid note, such as C4")
             self.middle_c = "C4"
-
-    def _validate_keyboard_definitions(self, keyboards, errors):
-        if not isinstance(keyboards, list) or not keyboards:
-            errors.append("'keyboards' must be a non-empty list")
-            return
-
-        models = {}
-        multiple_definitions = len(keyboards) > 1
-        for keyboard_idx, definition in enumerate(keyboards, start=1):
-            if not isinstance(definition, dict):
-                errors.append(f"Keyboard #{keyboard_idx} definition must be a mapping")
-                continue
-            self._validate_unknown_keys(
-                definition,
-                {"model", "serial", "banks"},
-                f"Keyboard #{keyboard_idx}",
-                errors
-            )
-            model = definition.get("model")
-            product_id = keyboard_product_id(model)
-            if model is None:
-                if multiple_definitions:
-                    errors.append(
-                        f"Keyboard #{keyboard_idx} requires 'model' when multiple "
-                        "keyboard definitions are present"
-                    )
-            elif product_id not in KEYBOARDS:
-                errors.append(f"Keyboard #{keyboard_idx} has an unsupported model: {model}")
-            serial_number = definition.get("serial")
-            if serial_number is not None and (
-                    not isinstance(serial_number, str) or not serial_number.strip()):
-                errors.append(f"Keyboard #{keyboard_idx} 'serial' must be a non-empty string")
-            self._validate_banks(
-                definition.get("banks"),
-                errors,
-                f"Keyboard #{keyboard_idx} ({model}) "
-            )
-            if product_id in KEYBOARDS:
-                models.setdefault(product_id, []).append(serial_number)
-
-        for product_id, serial_numbers in models.items():
-            if len(serial_numbers) > 1 and any(serial is None for serial in serial_numbers):
-                errors.append(
-                    f"Multiple {KEYBOARDS[product_id]['name']} definitions require serial numbers"
-                )
-            configured_serials = [serial for serial in serial_numbers if serial is not None]
-            if len(configured_serials) != len(set(configured_serials)):
-                errors.append(
-                    f"Duplicate serial definition for {KEYBOARDS[product_id]['name']}"
-                )
 
     def _validate_banks(self, banks, errors, context=""):
         if not isinstance(banks, list):
@@ -154,7 +100,7 @@ class SongColorsValidator:
 
         self._validate_unknown_keys(
             song,
-            {"title", "pc", "lights"},
+            {"title", "pc", "lights", "keyboards"},
             f"Bank {bank_name} song #{song_idx}",
             errors
         )
@@ -173,14 +119,84 @@ class SongColorsValidator:
         elif self._definition_seen(msb, pc, definitions):
             errors.append(f"Duplicate song definition for bank MSB {msb}, PC {pc}")
 
-        lights = song.get("lights")
-        if not isinstance(lights, dict):
-            errors.append(f"Bank {bank_name} PC {pc} 'lights' must be a mapping")
-            return
-        if not lights:
-            errors.append(f"Bank {bank_name} PC {pc} 'lights' must not be empty")
+        has_keyboard_maps = "keyboards" in song
+        if "lights" not in song and not has_keyboard_maps:
+            errors.append(f"Bank {bank_name} PC {pc} requires 'lights' or 'keyboards'")
+        elif "lights" in song:
+            lights = song["lights"]
+            if not isinstance(lights, dict):
+                errors.append(f"Bank {bank_name} PC {pc} 'lights' must be a mapping")
+            elif not lights:
+                errors.append(f"Bank {bank_name} PC {pc} 'lights' must not be empty")
+            else:
+                self._validate_light_map(lights, bank_name, pc, errors)
+
+        if has_keyboard_maps:
+            self._validate_song_keyboard_lights(
+                song["keyboards"],
+                bank_name,
+                pc,
+                errors
+            )
+
+    def _validate_song_keyboard_lights(self, keyboard_lights, bank_name, pc, errors):
+        if not isinstance(keyboard_lights, list) or not keyboard_lights:
+            errors.append(
+                f"Bank {bank_name} PC {pc} 'keyboards' must be a non-empty list"
+            )
             return
 
+        definitions = {}
+        for keyboard_idx, definition in enumerate(keyboard_lights, start=1):
+            context = f"Bank {bank_name} PC {pc} keyboard #{keyboard_idx}"
+            if not isinstance(definition, dict):
+                errors.append(f"{context} must be a mapping")
+                continue
+
+            self._validate_unknown_keys(
+                definition,
+                {"model", "serial", "lights"},
+                context,
+                errors
+            )
+
+            model = definition.get("model")
+            product_id = keyboard_product_id(model)
+            if product_id not in KEYBOARDS:
+                errors.append(f"{context} 'model' must be a recognized keyboard model")
+                product_id = None
+
+            serial = definition.get("serial")
+            if serial is not None and (
+                    not isinstance(serial, str) or not serial.strip()):
+                errors.append(f"{context} 'serial' must be a non-empty string")
+                serial = None
+
+            if product_id is not None:
+                definitions.setdefault(product_id, []).append(serial)
+
+            lights = definition.get("lights")
+            if not isinstance(lights, dict):
+                errors.append(f"{context} 'lights' must be a mapping")
+            elif not lights:
+                errors.append(f"{context} 'lights' must not be empty")
+            else:
+                self._validate_light_map(lights, bank_name, pc, errors)
+
+        for product_id, serials in definitions.items():
+            if len(serials) > 1 and any(serial is None for serial in serials):
+                errors.append(
+                    f"Bank {bank_name} PC {pc} multiple "
+                    f"{KEYBOARDS[product_id]['name']} entries require serials"
+                )
+            configured_serials = [serial for serial in serials if serial is not None]
+            if len(configured_serials) != len(set(configured_serials)):
+                errors.append(
+                    f"Bank {bank_name} PC {pc} has duplicate serial entries for "
+                    f"{KEYBOARDS[product_id]['name']}"
+                )
+
+    def _validate_light_map(self, lights, bank_name, pc, errors):
         light_ranges = []
         for note_range, color in lights.items():
             self._validate_light(
@@ -284,46 +300,3 @@ class SongColorsValidator:
                 and len(color) == 3
                 and all(isinstance(channel, int) and not isinstance(channel, bool)
                         and 0 <= channel <= 255 for channel in color))
-
-    def check_song_name_consistency(self, data):
-        """Warn when keyboards define different song titles for the same bank/PC."""
-        if not isinstance(data, dict):
-            return []
-
-        sources = []
-        if isinstance(data.get("banks"), list):
-            sources.append(("Default", data["banks"]))
-        for keyboard_idx, definition in enumerate(data.get("keyboards") or [], start=1):
-            if not isinstance(definition, dict) or not isinstance(definition.get("banks"), list):
-                continue
-            label = definition.get("model", f"Keyboard #{keyboard_idx}")
-            if definition.get("serial"):
-                label = f"{label} (serial {definition['serial']})"
-            sources.append((label, definition["banks"]))
-
-        if len(sources) < 2:
-            return []
-
-        titles_by_key = {}
-        for label, banks in sources:
-            for bank in banks:
-                if not isinstance(bank, dict):
-                    continue
-                msb = bank.get("msb")
-                for song in bank.get("songs") or []:
-                    if not isinstance(song, dict):
-                        continue
-                    pc = song.get("pc")
-                    title = song.get("title")
-                    if msb is None or pc is None or title is None:
-                        continue
-                    titles_by_key.setdefault((msb, pc), []).append((label, title))
-
-        warnings = []
-        for (msb, pc), entries in sorted(titles_by_key.items(), key=lambda item: item[0]):
-            if len({title for _, title in entries}) > 1:
-                details = ", ".join(f"{label}: '{title}'" for label, title in entries)
-                warnings.append(
-                    f"Bank MSB {msb} PC {pc} has mismatched song names across keyboards: {details}"
-                )
-        return warnings
