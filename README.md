@@ -367,6 +367,14 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE).
 
 ## Version History
 
+- **1.2.0**
+  - Changed YAML format to song-first model: keyboard-specific light maps are now defined per song under a `keyboards` list (`model`, optional `serial`, `lights`), with an optional song-level `lights` map as the default for other keyboards.
+    - **This is a breaking change:** the top-level `keyboards` key from 1.1.0 is no longer supported and is rejected by validation. Move each keyboard's light map into the songs.
+  - Added the optional `oneBasedBanks` and `oneBasedPrograms` settings for writing `msb` and `pc` values from 1 to 128.
+  - Stricter validation of YAML structure, including unknown keys and keyboard entries.
+  - Split the source into separate modules by class and renamed the GUI module to `gui.py`.
+  - Added unit tests (`python tests/unit_tests.py`), including checks of the README YAML examples.
+
 - **1.1.0**
   - Added support for multiple keyboards with per-keyboard light configurations, including multiple keyboards of the same model via serial number.
   - Added a live list of connected keyboards with status badges showing whether a matching definition is available.

@@ -5,7 +5,7 @@ import sys
 import hid
 
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 TITLE = "Komplete Kontrol LightGuide Manager GUI"
 
 
